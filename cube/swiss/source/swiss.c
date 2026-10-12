@@ -45,6 +45,7 @@
 #include "mp3.h"
 #include "nkit.h"
 #include "rt4k.h"
+#include "jewelcase.h"
 #include "wkf.h"
 #include "cheats.h"
 #include "settings.h"
@@ -604,6 +605,159 @@ uiDrawObj_t* renderGamesGrid(file_handle** directory, int num_files, uiDrawObj_t
 		else {
 			while (padsButtonsHeld() & waitButtons)
 				{ VIDEO_WaitVSync (); }
+		}
+	}
+	meta_thread_stop();
+	DrawDispose(loadingBox);
+	return filePanel;
+}
+
+// Draws the games collection as clear CD jewel cases (see gui/jewelcase.c)
+static void drawGamesJewelCase(file_handle** directory, int num_files, uiDrawObj_t *containerPanel) {
+	// the IDs of the discs round the chosen one, for the dock's thumbnails
+	for(int i = MAX(0, curSelection - 6); i < MIN(num_files, curSelection + 7); i++) {
+		lockFile(directory[i]);
+		populate_meta(directory[i]);
+		unlockFile(directory[i]);
+	}
+	DrawAddChild(containerPanel, DrawJewelCase(directory, num_files));
+	// playing: the case has the screen to itself as it goes to black
+	if(JewelCase_IsLaunching()) return;
+
+	// the name and where it is in the list, as the cover flow has them but further
+	// in, clear of a CRT's edges
+	file_handle *file = directory[curSelection];
+	const char *title = file->meta && file->meta->displayName ? file->meta->displayName : getRelativeName(file->name);
+	float scale = GetTextScaleToFitInWidthWithMax((char*)title, 400, 0.75f);
+	DrawAddChild(containerPanel, DrawStyledLabel(44, 94, title, scale, ALIGN_LEFT, defaultColor));
+	char id[JEWEL_ID_LEN];
+	JewelCase_GameId(file, id);
+	if(id[0]) sprintf(txtbuffer, "%s  \267  %i of %i", id, curSelection + 1, num_files);
+	else sprintf(txtbuffer, "%i of %i", curSelection + 1, num_files);
+	DrawAddChild(containerPanel, DrawStyledLabel(getVideoMode()->fbWidth - 44, 94, txtbuffer, 0.625f, ALIGN_RIGHT, accentColor));
+}
+
+// Games collection as jewel cases: A opens the case and plays the game,
+// left/right swaps to the next case, the C-stick turns it, Y spins the disc
+uiDrawObj_t* renderGamesJewelCase(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
+{
+	if(num_files<=0) {
+		needsRefresh=1;
+		return filePanel;
+	}
+	if(curSelection >= num_files) {
+		curSelection = num_files-1;
+	}
+	JewelCase_Enter(num_files, curSelection);
+	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
+	DrawPublish(loadingBox);
+	meta_thread_start(loadingBox);
+
+	bool dirty = true, wasLaunching = JewelCase_IsLaunching(), dragging = false;
+	u32 prev = padsButtonsHeld();
+	int repeatDir = 0;
+	u32 repeatAt = 0;
+	while(1) {
+		int sel = JewelCase_Selected();
+		if(sel != curSelection || JewelCase_IsLaunching() != wasLaunching) {
+			curSelection = sel;
+			wasLaunching = JewelCase_IsLaunching();
+			dirty = true;
+		}
+		if(dirty) {
+			uiDrawObj_t *newPanel = DrawFilePanel();
+			drawGamesJewelCase(directory, num_files, newPanel);
+			filePanel = DrawRepublish(filePanel, newPanel);
+			dirty = false;
+		}
+		// Disc art is read as it's needed, one image a frame: the ten the dock
+		// shows, nearest the chosen case first
+		int first = MAX(0, MIN(curSelection - 4, num_files - 10));
+		for(int d = 0; d < 20; d++) {
+			int i = curSelection + ((d & 1) ? (d + 1) / 2 : -(d / 2));
+			if(i < first || i >= first + 10 || i >= num_files) continue;
+			char id[JEWEL_ID_LEN];
+			JewelCase_GameId(directory[i], id);
+			if(JewelCase_NeedsArt(id)) {
+				JewelCase_LoadArt(id);
+				break;
+			}
+		}
+		VIDEO_WaitVSync();
+
+		u32 held = padsButtonsHeld(), pressed = held & ~prev;
+		prev = held;
+		s8 stickX = padsStickX(), subX = padsSubStickX(), subY = padsSubStickY();
+		u32 now = VIDEO_GetRetraceCount(), rate = VIDEO_GetRetraceRate();
+
+		// the screen has gone black: start the game
+		if(JewelCase_LaunchDone()) {
+			lockFile(directory[curSelection]);
+			memcpy(&curFile, directory[curSelection], sizeof(file_handle));
+			if(canLoadFileType(curFile.name, devices[DEVICE_CUR]->extraExtensions)) {
+				meta_thread_stop();
+				load_file();
+			}
+			memcpy(directory[curSelection], &curFile, sizeof(file_handle));
+			unlockFile(directory[curSelection]);
+			break;
+		}
+		// while it plays, B is the only way out
+		if(JewelCase_IsLaunching()) {
+			if(pressed & BUTTON_B) JewelCase_SetOpen(false);
+			JewelCase_SetDrag(0, 0, false);
+			dragging = false;
+			repeatDir = 0;
+			continue;
+		}
+
+		// left/right swap cases, repeating while held
+		int dir = ((held & BUTTON_LEFT) || stickX <= -40) ? -1 : ((held & BUTTON_RIGHT) || stickX >= 40) ? 1 : 0;
+		if(dir != repeatDir) {
+			repeatDir = dir;
+			if(dir) {
+				JewelCase_Step(dir);
+				repeatAt = now + rate * 45 / 100;
+			}
+		}
+		else if(dir && (s32)(now - repeatAt) >= 0) {
+			JewelCase_Step(dir);
+			repeatAt = now + rate / 4;
+		}
+		if(pressed & (BUTTON_UP|BUTTON_L)) {
+			JewelCase_GoTo(MAX(0, JewelCase_Selected() - GAMES_PAGE));
+		}
+		if(pressed & (BUTTON_DOWN|BUTTON_R)) {
+			JewelCase_GoTo(MIN(num_files-1, JewelCase_Selected() + GAMES_PAGE));
+		}
+
+		// the C-stick turns the case as dragging it does, and lets it spring back
+		bool drag = abs(subX) > 12 || abs(subY) > 12;
+		if(drag || dragging) {
+			JewelCase_SetDrag(-subY / 90.0f * 0.45f, subX / 90.0f * 0.9f, drag);
+			dragging = drag;
+		}
+
+		if(pressed & PAD_BUTTON_Y) JewelCase_ToggleSpin();
+		if(pressed & PAD_BUTTON_X) JewelCase_TogglePause();
+		if(pressed) JewelCase_Interact();
+
+		if(pressed & BUTTON_A) {
+			JewelCase_Launch();
+		}
+		if(pressed & BUTTON_B) {
+			if(JewelCase_IsOpen()) {
+				JewelCase_SetOpen(false);
+			}
+			else {
+				curMenuLocation = ON_OPTIONS;
+				break;
+			}
+		}
+		if((pressed & BUTTON_START) && swissSettings.recentListLevel > 0) {
+			meta_thread_stop();
+			select_recent_entry();
+			break;
 		}
 	}
 	meta_thread_stop();
@@ -2970,7 +3124,10 @@ void menu_loop()
 			}
 			if(gamesMode) {
 				fileBrowserType = -1;
-				filePanel = renderGamesGrid(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
+				if(swissSettings.gamesView == GAMES_VIEW_JEWELCASE)
+					filePanel = renderGamesJewelCase(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
+				else
+					filePanel = renderGamesGrid(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
 			}
 			switch(fileBrowserType) {
 				case -1:

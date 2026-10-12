@@ -30,6 +30,7 @@
 #include "cheats.h"
 #include "scene3d.h"
 #include "uisound.h"
+#include "jewelcase.h"
 
 #define GUI_MSGBOX_ALPHA 225
 
@@ -119,11 +120,12 @@ enum VideoEventType
 	EV_SCENE3D,
 	EV_PAGEHEADER,
 	EV_SELECTBAR,
-	EV_COVERFLOW
+	EV_COVERFLOW,
+	EV_JEWELCASE
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "MenuButtons", "Tooltip", "TitleBar", "Scene3D", "PageHeader", "SelectBar", "Coverflow"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "MenuButtons", "Tooltip", "TitleBar", "Scene3D", "PageHeader", "SelectBar", "Coverflow", "JewelCase"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -244,6 +246,11 @@ typedef struct drawCoverflowEvent {
 	struct uiDrawObj **cards;
 } drawCoverflowEvent_t;
 
+typedef struct drawJewelCaseEvent {
+	int count;
+	jewel_entry_t *entries;
+} drawJewelCaseEvent_t;
+
 typedef struct uiDrawObjQueue {
 	struct uiDrawObj *event;
 	struct uiDrawObjQueue *next;
@@ -340,6 +347,9 @@ static void clearNestedEvent(uiDrawObj_t *event) {
 				clearNestedEvent(data->cards[i]);
 			}
 			free(data->cards);
+		}
+		else if(event->type == EV_JEWELCASE) {
+			free(((drawJewelCaseEvent_t*)event->data)->entries);
 		}
 		//print_debug("Clear Nested event->data\n");
 		free(event->data);
@@ -1728,6 +1738,28 @@ uiDrawObj_t* DrawCoverflow(file_handle **files, int numFiles, int selected)
 	return event;
 }
 
+// Internal
+static void _DrawJewelCase(uiDrawObj_t *evt) {
+	drawJewelCaseEvent_t *data = (drawJewelCaseEvent_t*)evt->data;
+	JewelCase_Draw(data->entries, data->count);
+}
+
+// External
+// Games as clear CD jewel cases, one at a time (see jewelcase.c)
+uiDrawObj_t* DrawJewelCase(file_handle **files, int numFiles)
+{
+	drawJewelCaseEvent_t *eventData = calloc(1, sizeof(drawJewelCaseEvent_t));
+	eventData->count = numFiles;
+	eventData->entries = calloc(numFiles > 0 ? numFiles : 1, sizeof(jewel_entry_t));
+	for(int i = 0; i < numFiles; i++) {
+		JewelCase_GameId(files[i], eventData->entries[i].id);
+	}
+	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
+	event->type = EV_JEWELCASE;
+	event->data = eventData;
+	return event;
+}
+
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle) {
 	uiDrawObj_t* event = DrawFileBrowserButtonMeta(x1, y1, x2, y2, message, file, B_SELECTED);
 	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)event->data;
@@ -2954,6 +2986,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_COVERFLOW:
 			_DrawCoverflow(videoEvent);
 			break;
+		case EV_JEWELCASE:
+			_DrawJewelCase(videoEvent);
+			break;
 		default:
 			break;
 	}
@@ -3030,7 +3065,11 @@ static void *videoUpdate(void *videoEventQueue) {
 		}
 		u16 width = vmode->fbWidth;
 		u16 height = GX_SetDispCopyYScale(getYScaleFactor(vmode->efbHeight, vmode->xfbHeight));
+		// the copy only clears depth while depth writes are on: leave none behind
+		// for the 3D views that test against it (the jewel cases)
+		GX_SetZMode(GX_ENABLE, GX_ALWAYS, GX_TRUE);
 		GX_CopyDisp(xfb[whichfb], GX_TRUE);
+		GX_SetZMode(GX_DISABLE, GX_ALWAYS, GX_FALSE);
 		GX_DrawDone();
 
 		LWP_MutexUnlock(_videomutex);

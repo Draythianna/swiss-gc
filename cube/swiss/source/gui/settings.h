@@ -63,6 +63,7 @@ enum SETTINGS_INTERFACE {
 	SET_FLATTEN_DIR,
 	SET_UI_SOUNDS,
 	SET_UI_OVERSCAN,
+	SET_GAMES_VIEW,
 	SET_PAGE_2_BACK,
 	SET_PAGE_2_NEXT,
 	SET_PAGE_2_SAVE,
@@ -201,6 +202,7 @@ extern char *sramVideoStr[];
 extern char *igrTypeStr[];
 extern char *aveCompatStr[];
 extern char *fileBrowserTypeStr[];
+extern char *gamesViewStr[];
 extern char *bs2BootStr[];
 extern char *recentListLevelStr[];
 

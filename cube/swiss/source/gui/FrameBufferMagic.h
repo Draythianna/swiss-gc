@@ -153,6 +153,7 @@ void DrawDispose(uiDrawObj_t *evt);
 uiDrawObj_t* DrawFileBrowserButton(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawFileBrowserButtonMeta(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int mode);
 uiDrawObj_t* DrawCoverflow(file_handle **files, int numFiles, int selected);
+uiDrawObj_t* DrawJewelCase(file_handle **files, int numFiles);
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle);
 uiDrawObj_t* DrawVertScrollBar(int x, int y, int width, int height, float scrollPercent, int scrollHeight);
 void DrawArgsSelector(const char *fileName);

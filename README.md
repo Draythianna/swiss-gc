@@ -28,6 +28,7 @@
 | | |
 |---|---|
 | 🧊 **IPL style home menu** | Glass cubes on a rotating ring above a reflective floor, inspired by the GameCube main menu |
+| 📀 **Jewel case games** | Each game as a clear CD jewel case with its own disc art spinning inside; A opens it and plays |
 | 💿 **Games cover flow** | Every disc image on your device as banner cards you can glide through |
 | ✨ **Glass theme** | Frosted panels, specular highlights, fresnel cubes and an animated background |
 | 🎮 **Real button glyphs** | Hint bars draw the pad's own buttons: green A, red B, purple Z, grey X/Y/L/R |
@@ -46,7 +47,10 @@ The main sections are glass cubes on a rotating ring. The selected cube comes fo
 **Games · Files · Devices · Settings · System Info · Refresh · Exit**
 
 ### 💿 Games
-Every disc image (`.iso`, `.gcm`, `.tgc`, `.gcz`, `.rvz`) found up to three folders deep on the current device, shown as an iTunes style cover flow. Each card shows the game's banner, title, publisher, size and region, and the cards are reflected on the floor as they glide to a new selection.
+Every disc image (`.iso`, `.gcm`, `.tgc`, `.gcz`, `.rvz`) found up to three folders deep on the current device, shown one of two ways (*Games View* in the Interface settings):
+
+- **Jewel Case** (the default): one clear CD jewel case at a time on Swiss's backdrop, after [bubbbly.com/cd-case](https://www.bubbbly.com/cd-case), with the game's disc art spinning inside and a light streak sweeping the lid as it tilts. Left/right slides the next case in, the C-Stick turns the case in your hands, and **A** opens it, spins the disc up and runs the camera in to it as the screen fades and the game starts. A dock along the bottom shows the discs around the chosen one. The disc art is a PNG per game on your SD card, `swiss/discs/<GAMEID>.png`; GameTDB's disc images work as they are. See **[the Jewel Case guide](docs/jewel-case.md)** for the controls and the image format.
+- **Cover Flow**: an iTunes style cover flow. Each card shows the game's banner, title, publisher, size and region, and the cards are reflected on the floor as they glide to a new selection.
 
 ### 📁 Files
 The regular Swiss file browser. The list recedes into the scene when the home menu opens, and the carousel browser turns its side cards in 3D.
@@ -65,6 +69,7 @@ The hint bars along the bottom draw each button in the GameCube pad's colours an
 |---|---|---|
 | Menu Sounds | Interface | Turns the menu sound effects on or off |
 | Menu Overscan | Interface | Shrinks the menus by 0-10% towards the centre |
+| Games View | Interface | Shows the Games section as *Jewel Case* (default) or *Cover Flow* |
 | GameCube Intro | Global | Plays the original boot animation before Swiss via cubeboot, with a choice of cube colour. Needs Swiss at `/ipl.dol` and cubeboot at `/cubeboot.dol` |
 
 ## Faster Network Loading with SSP
@@ -180,14 +185,14 @@ Note: Specific devices will have specific locations/executable file variants tha
 | R Button                      | Move down a page        |
 | Start/Pause                   | Access recent list      |
 
-In the Games cover flow, left/right moves one game, up/down or L/R jumps five and holding the Control Stick scrolls continuously.
+In the Games cover flow, left/right moves one game, up/down or L/R jumps five and holding the Control Stick scrolls continuously. In the Jewel Case view the same keys move between cases, the C-Stick turns the case, A plays (B cancels), Y stops the disc spinning and X starts a slideshow; see [the Jewel Case guide](docs/jewel-case.md).
 
 ### Swiss UI
 - The top heading shows the version number, commit hash, and revision number of Swiss.
 - The left panes show what device you are using.
 - The largest portion is the Swiss file browser, through which you can navigate files and folders. The top of every folder includes a `..` option, and selecting this moves you back up a folder.
 - The home menu (B), around the ring:
-	- Games: cover flow of the games on the current device
+	- Games: the games on the current device, as jewel cases or a cover flow
 	- Files: the file browser
 	- Devices: device selection
 	- Settings: Global Settings, Interface Settings, Network Settings, Global Game Settings, Default Game Settings, and Current Game Settings
