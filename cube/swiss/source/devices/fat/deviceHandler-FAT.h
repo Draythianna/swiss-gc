@@ -26,6 +26,7 @@ extern s32 deviceHandler_FAT_statFile(file_handle* file);
 extern s64 deviceHandler_FAT_seekFile(file_handle* file, s64 where, u32 type);
 extern s32 deviceHandler_FAT_readFile(file_handle* file, void* buffer, u32 length);
 extern s32 deviceHandler_FAT_writeFile(file_handle* file, const void* buffer, u32 length);
+extern s32 deviceHandler_FAT_openForWrite(file_handle* file);
 extern s32 deviceHandler_FAT_closeFile(file_handle* file);
 extern s32 deviceHandler_FAT_deleteFile(file_handle* file);
 extern s32 deviceHandler_FAT_renameFile(file_handle* file, char* name);

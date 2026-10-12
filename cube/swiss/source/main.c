@@ -39,6 +39,7 @@
 #include "aram/sidestep.h"
 #include "devices/filemeta.h"
 #include "cubeboot.h"
+#include "gui/capture.h"
 
 dvdcmdblk DVDCommandBlock;
 dvdcmdblk DVDInquiryBlock;
@@ -441,6 +442,7 @@ int main(int argc, char *argv[])
 
 // Checks if devices are available, prints name of device being detected for slow init devices
 void populateDeviceAvailability() {
+	Capture_Stop();	// probing devices disturbs the EXI bus a capture may be writing over
 	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Detecting devices\205\nThis can be skipped by holding B next time"));
 	while(DVD_GetCmdBlockStatus(&DVDInquiryBlock) == DVD_STATE_BUSY) {
 		if(DVD_LowGetCoverStatus() == DVD_COVER_OPEN) {

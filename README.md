@@ -28,11 +28,13 @@
 | | |
 |---|---|
 | 🧊 **IPL style home menu** | Glass cubes on a rotating ring above a reflective floor, inspired by the GameCube main menu |
+| 📀 **Jewel case games** | Each game as a clear CD jewel case with its own disc art spinning inside; A opens it and plays |
 | 💿 **Games cover flow** | Every disc image on your device as banner cards you can glide through |
 | ✨ **Glass theme** | Frosted panels, specular highlights, fresnel cubes and an animated background |
 | 🎮 **Real button glyphs** | Hint bars draw the pad's own buttons: green A, red B, purple Z, grey X/Y/L/R |
 | 🔊 **Menu sounds** | Bell style effects mixed straight into the audio interface, no DSP or ARAM used |
 | 🌐 **Swiss Streaming Protocol** | Load games over the Broadband Adapter in paced batches instead of one packet per round trip |
+| 📸 **Screenshots and recording** | L+R+Z+D-Pad Down saves a PNG; hold it to record the screen to an `.avi` |
 | 📺 **Menu Overscan** | Pull the menus in 0-10% for TVs that crop the edges |
 | 🟣 **GameCube Intro** | Optional boot animation via [cubeboot](https://github.com/OffBroadway/cubeboot) |
 
@@ -46,7 +48,10 @@ The main sections are glass cubes on a rotating ring. The selected cube comes fo
 **Games · Files · Devices · Settings · System Info · Refresh · Exit**
 
 ### 💿 Games
-Every disc image (`.iso`, `.gcm`, `.tgc`, `.gcz`, `.rvz`) found up to three folders deep on the current device, shown as an iTunes style cover flow. Each card shows the game's banner, title, publisher, size and region, and the cards are reflected on the floor as they glide to a new selection.
+Every disc image (`.iso`, `.gcm`, `.tgc`, `.gcz`, `.rvz`) found up to three folders deep on the current device, shown one of two ways (*Games View* in the Interface settings):
+
+- **Jewel Case** (the default): one clear CD jewel case at a time on Swiss's backdrop, after [bubbbly.com/cd-case](https://www.bubbbly.com/cd-case), with the game's disc art spinning inside and a light streak sweeping the lid as it tilts. Left/right slides the next case in, the C-Stick turns the case in your hands, and **A** opens it, spins the disc up and runs the camera in to it as the screen fades and the game starts. A dock along the bottom shows the discs around the chosen one. The disc art is a PNG per game on your SD card, `swiss/discs/<GAMEID>.png`; GameTDB's disc images work as they are. See **[the Jewel Case guide](docs/jewel-case.md)** for the controls and the image format.
+- **Cover Flow**: an iTunes style cover flow. Each card shows the game's banner, title, publisher, size and region, and the cards are reflected on the floor as they glide to a new selection.
 
 ### 📁 Files
 The regular Swiss file browser. The list recedes into the scene when the home menu opens, and the carousel browser turns its side cards in 3D.
@@ -60,11 +65,27 @@ The regular Swiss file browser. The list recedes into the scene when the home me
 ### 🎮 Button glyphs
 The hint bars along the bottom draw each button in the GameCube pad's colours and shapes, including the Start pill and the D-Pad cross, instead of text like `(A)`. The row shrinks to fit when there are many hints.
 
+### 📸 Screenshots and recording
+Tap **L+R+Z+D-Pad Down** (or flick the C-Stick down) to save a PNG of the screen to `swiss/screenshots/`. Hold the combo for a second (or flick the C-Stick up) to start or stop recording an MJPEG `.avi` (half resolution, 30 fps) to `swiss/recordings/`. In the Jewel Case games view the C-Stick turns the case, so there only the button combo works.
+
+- Works on every Swiss screen, but not once a game or homebrew has started
+- Files go to the device being browsed, which has to be writable (SD, IDE, network shares)
+- A small status pill shows the result and the recording time, and is left out of the captures themselves
+- If the device can't keep up, frames are repeated so the video stays in real time; a recording stops on its own at about 1 GB
+- Whenever Swiss mounts, unmounts or checks a device (switching devices, saving settings, looking for cheats) the recording keeps going: the file is finished and closed so Swiss can use the card safely, frames are held in memory meanwhile (about 9 s worth), and then the same file is reopened and continues without a gap
+
+To share a recording (as MP4, which phones and messengers play):
+
+```sh
+ffmpeg -i recording.avi -vf "scale=640:480:flags=lanczos:in_range=pc:out_range=tv,format=yuv420p" -c:v libx264 -crf 18 -movflags +faststart recording.mp4
+```
+
 ### ⚙️ New settings
 | Setting | Where | What it does |
 |---|---|---|
 | Menu Sounds | Interface | Turns the menu sound effects on or off |
 | Menu Overscan | Interface | Shrinks the menus by 0-10% towards the centre |
+| Games View | Interface | Shows the Games section as *Jewel Case* (default) or *Cover Flow* |
 | GameCube Intro | Global | Plays the original boot animation before Swiss via cubeboot, with a choice of cube colour. Needs Swiss at `/ipl.dol` and cubeboot at `/cubeboot.dol` |
 
 ## Faster Network Loading with SSP
@@ -179,15 +200,18 @@ Note: Specific devices will have specific locations/executable file variants tha
 | L Button                      | Move up a page          |
 | R Button                      | Move down a page        |
 | Start/Pause                   | Access recent list      |
+| L+R+Z+D-Pad Down (tap)        | Save a screenshot       |
+| L+R+Z+D-Pad Down (hold 1s)    | Start/stop recording    |
+| C-Stick down / up             | Screenshot / start/stop recording (not in the Jewel Case games view, where the C-Stick turns the case) |
 
-In the Games cover flow, left/right moves one game, up/down or L/R jumps five and holding the Control Stick scrolls continuously.
+In the Games cover flow, left/right moves one game, up/down or L/R jumps five and holding the Control Stick scrolls continuously. In the Jewel Case view the same keys move between cases, the C-Stick turns the case, A plays (B cancels), Y stops the disc spinning and X starts a slideshow; see [the Jewel Case guide](docs/jewel-case.md).
 
 ### Swiss UI
 - The top heading shows the version number, commit hash, and revision number of Swiss.
 - The left panes show what device you are using.
 - The largest portion is the Swiss file browser, through which you can navigate files and folders. The top of every folder includes a `..` option, and selecting this moves you back up a folder.
 - The home menu (B), around the ring:
-	- Games: cover flow of the games on the current device
+	- Games: the games on the current device, as jewel cases or a cover flow
 	- Files: the file browser
 	- Devices: device selection
 	- Settings: Global Settings, Interface Settings, Network Settings, Global Game Settings, Default Game Settings, and Current Game Settings

@@ -184,6 +184,7 @@ typedef struct {
 	int showHiddenFiles;
 	int uiSounds;
 	int uiOverscan;
+	int gamesView;
 	int recentListLevel;	// off, lazy, on
 	int cubebootIntro;
 	int cubebootIntroColor;
@@ -222,6 +223,13 @@ enum fileOptions
 	DELETE_OPTION,
 	RENAME_OPTION,
 	HIDE_OPTION
+};
+
+enum gamesViews
+{
+	GAMES_VIEW_JEWELCASE=0,
+	GAMES_VIEW_COVERFLOW,
+	GAMES_VIEW_MAX
 };
 
 enum fileBrowserTypes
