@@ -16,6 +16,7 @@
 #include "cubeboot.h"
 #include "settings.h"
 #include "bba.h"
+#include "gui/capture.h"
 
 // This is an example Swiss settings entry (sits at the top of global.ini)
 //!!Swiss Settings Start!!
@@ -60,6 +61,7 @@
 
 // Tries to init the current config device
 bool config_set_device() {
+	Capture_Stop();	// may test and (re)mount the config device
 	// Set the current config device to whatever the current configDeviceId is
 	DEVICEHANDLER_INTERFACE *configDevice = getDeviceByUniqueId(swissSettings.configDeviceId);
 	devices[DEVICE_CONFIG] = NULL;
@@ -90,6 +92,7 @@ bool config_set_device() {
 }
 
 void config_unset_device() {
+	Capture_Stop();
 	if(devices[DEVICE_CONFIG] != devices[DEVICE_CUR]) {
 		devices[DEVICE_CONFIG]->deinit(devices[DEVICE_CONFIG]->initial);
 	}

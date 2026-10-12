@@ -22,6 +22,7 @@
 #include "ata.h"
 #include "patcher.h"
 #include "dvd.h"
+#include "gui/capture.h"
 
 #define IS_SDCARD(file) (file->name[0] == 's' && file->name[1] == 'd')
 int GET_SLOT(file_handle* file) {
@@ -220,6 +221,23 @@ s32 deviceHandler_FAT_writeFile(file_handle* file, const void* buffer, u32 lengt
 	return bytes_written;
 }
 
+// Opens an existing file for writing without truncating it, so writeFile appends at file->offset
+s32 deviceHandler_FAT_openForWrite(file_handle* file) {
+	if(file->ffsFp) return 0;
+	FFFIL* fp = malloc(sizeof(FFFIL));
+	if(f_open(fp, file->name, FA_OPEN_EXISTING | FA_WRITE) != FR_OK) {
+		free(fp);
+		return -1;
+	}
+	file->ffsFp     = fp;
+	FATFS* fatfs    = fp->obj.fs;
+	file->fileBase  = fp->obj.sclust;
+	file->size      = fp->obj.objsize;
+	file->fileType  = IS_FILE;
+	file->blockSize = fatfs->ssize;
+	return 0;
+}
+
 s32 deviceHandler_FAT_setupFile(file_handle* file, file_handle* file2, ExecutableFile* filesToPatch, int numToPatch) {
 	int i;
 	file_frag *fragList = NULL;
@@ -328,6 +346,7 @@ s32 deviceHandler_FAT_setupFile(file_handle* file, file_handle* file2, Executabl
 }
 
 s32 fatFs_Mount(file_handle* file) {
+	Capture_Stop();	// a remount frees the volume an open capture file points into
 	FATFS* fatfs = file->device->context;
 	if(fatfs != NULL) {
 		print_debug("Unmount %i devnum, %s path\n", fatfs->pdrv, file->name);
@@ -345,6 +364,7 @@ void setSDGeckoSpeed(int slot, bool fast) {
 }
 
 s32 deviceHandler_FAT_init(file_handle* file) {
+	Capture_Stop();	// changes the EXI speed and remounts
 	int isSDCard = IS_SDCARD(file);
 	int slot = GET_SLOT(file);
 	if(isSDCard) {
@@ -376,6 +396,7 @@ s32 deviceHandler_FAT_closeFile(file_handle* file) {
 }
 
 s32 deviceHandler_FAT_deinit(file_handle* file) {
+	Capture_Stop();
 	deviceHandler_FAT_closeFile(file);
 	if(file) {
 		f_unmount(file->name);
@@ -412,7 +433,7 @@ s32 deviceHandler_FAT_makeDir(file_handle* dir) {
 }
 
 bool deviceHandler_FAT_test_sd_a() {
-	bool ret = sdgecko_isInitialized(0) || (__io_gcsda.startup(&__io_gcsda) && __io_gcsda.shutdown(&__io_gcsda));
+	bool ret = sdgecko_isInitialized(0) || (Capture_Stop(), __io_gcsda.startup(&__io_gcsda) && __io_gcsda.shutdown(&__io_gcsda));
 	if (ret) {
 		if (!strncmp(PRODUCT_NAME(0), "USBGC", 5))
 			__device_sd_a.hwName = "USB Dolphin";
@@ -429,7 +450,7 @@ bool deviceHandler_FAT_test_sd_a() {
 	return ret;
 }
 bool deviceHandler_FAT_test_sd_b() {
-	bool ret = sdgecko_isInitialized(1) || (__io_gcsdb.startup(&__io_gcsdb) && __io_gcsdb.shutdown(&__io_gcsdb));
+	bool ret = sdgecko_isInitialized(1) || (Capture_Stop(), __io_gcsdb.startup(&__io_gcsdb) && __io_gcsdb.shutdown(&__io_gcsdb));
 	if (ret) {
 		if (!strncmp(PRODUCT_NAME(1), "USBGC", 5))
 			__device_sd_b.hwName = "USB Dolphin";
@@ -443,7 +464,7 @@ bool deviceHandler_FAT_test_sd_b() {
 	return ret;
 }
 bool deviceHandler_FAT_test_sd_c() {
-	bool ret = sdgecko_isInitialized(2) || (__io_gcsd2.startup(&__io_gcsd2) && __io_gcsd2.shutdown(&__io_gcsd2));
+	bool ret = sdgecko_isInitialized(2) || (Capture_Stop(), __io_gcsd2.startup(&__io_gcsd2) && __io_gcsd2.shutdown(&__io_gcsd2));
 	if (ret) {
 		if (!strncmp(PRODUCT_NAME(2), "USBGC", 5))
 			__device_sd_c.hwName = "USB Dolphin";

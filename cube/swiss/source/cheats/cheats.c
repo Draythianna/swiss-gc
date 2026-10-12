@@ -24,6 +24,7 @@
 #include "FrameBufferMagic.h"
 #include "IPLFontWrite.h"
 #include <xxhash.h>
+#include "gui/capture.h"
 
 static CheatEntries _cheats;
 
@@ -208,6 +209,7 @@ int kenobi_get_maxsize() {
 }
 
 int findCheats(bool silent) {
+	Capture_Stop();	// (re)mounts SD devices looking for cheat files
 	char trimmedGameId[8], testBuffer[8];
 	memset(trimmedGameId, 0, 8);
 	memcpy(trimmedGameId, (char*)&GCMDisk, 6);

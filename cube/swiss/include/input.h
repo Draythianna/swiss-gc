@@ -17,6 +17,11 @@
 #define BUTTON_Y     (PAD_BUTTON_Y | PADEX_BUTTON_C_LEFT  | PADEX_BUTTON_C_UP)
 #define BUTTON_START (PAD_BUTTON_START)
 
+// L+R+Z+D-Pad Down, the screen capture combo (either trigger click or analog press counts)
+#define CAPTURE_COMBO_L  (PAD_TRIGGER_L | PADEX_TRIGGER_L)
+#define CAPTURE_COMBO_R  (PAD_TRIGGER_R | PADEX_TRIGGER_R)
+#define padsCaptureCombo(b) (((b) & CAPTURE_COMBO_L) && ((b) & CAPTURE_COMBO_R) && ((b) & PAD_TRIGGER_Z) && ((b) & PAD_BUTTON_DOWN))
+
 void padsInit();
 u32 padsButtonsHeld();
 s8 padsStickX();

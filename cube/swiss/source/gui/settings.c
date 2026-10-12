@@ -20,6 +20,7 @@
 #include "sram.h"
 #include "rt4k.h"
 #include "cubeboot.h"
+#include "capture.h"
 
 #define page_x_ofs_key (30)
 #define page_x_ofs_val (410)
@@ -697,6 +698,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.autoBoot ^= 1;
 			break;
 			case SET_AUTOLOAD:
+				Capture_Stop();
 				select_device(DEVICE_DEST);
 				if(devices[DEVICE_DEST] != NULL) {
 					if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {

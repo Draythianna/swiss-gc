@@ -34,6 +34,7 @@
 | 🎮 **Real button glyphs** | Hint bars draw the pad's own buttons: green A, red B, purple Z, grey X/Y/L/R |
 | 🔊 **Menu sounds** | Bell style effects mixed straight into the audio interface, no DSP or ARAM used |
 | 🌐 **Swiss Streaming Protocol** | Load games over the Broadband Adapter in paced batches instead of one packet per round trip |
+| 📸 **Screenshots and recording** | L+R+Z+D-Pad Down saves a PNG; hold it to record the screen to an `.avi` |
 | 📺 **Menu Overscan** | Pull the menus in 0-10% for TVs that crop the edges |
 | 🟣 **GameCube Intro** | Optional boot animation via [cubeboot](https://github.com/OffBroadway/cubeboot) |
 
@@ -63,6 +64,21 @@ The regular Swiss file browser. The list recedes into the scene when the home me
 
 ### 🎮 Button glyphs
 The hint bars along the bottom draw each button in the GameCube pad's colours and shapes, including the Start pill and the D-Pad cross, instead of text like `(A)`. The row shrinks to fit when there are many hints.
+
+### 📸 Screenshots and recording
+Tap **L+R+Z+D-Pad Down** (or flick the C-Stick down) to save a PNG of the screen to `swiss/screenshots/`. Hold the combo for a second (or flick the C-Stick up) to start or stop recording an MJPEG `.avi` (half resolution, 30 fps) to `swiss/recordings/`. In the Jewel Case games view the C-Stick turns the case, so there only the button combo works.
+
+- Works on every Swiss screen, but not once a game or homebrew has started
+- Files go to the device being browsed, which has to be writable (SD, IDE, network shares)
+- A small status pill shows the result and the recording time, and is left out of the captures themselves
+- If the device can't keep up, frames are repeated so the video stays in real time; a recording stops on its own at about 1 GB
+- Whenever Swiss mounts, unmounts or checks a device (switching devices, saving settings, looking for cheats) the recording keeps going: the file is finished and closed so Swiss can use the card safely, frames are held in memory meanwhile (about 9 s worth), and then the same file is reopened and continues without a gap
+
+To share a recording (as MP4, which phones and messengers play):
+
+```sh
+ffmpeg -i recording.avi -vf "scale=640:480:flags=lanczos:in_range=pc:out_range=tv,format=yuv420p" -c:v libx264 -crf 18 -movflags +faststart recording.mp4
+```
 
 ### ⚙️ New settings
 | Setting | Where | What it does |
@@ -184,6 +200,9 @@ Note: Specific devices will have specific locations/executable file variants tha
 | L Button                      | Move up a page          |
 | R Button                      | Move down a page        |
 | Start/Pause                   | Access recent list      |
+| L+R+Z+D-Pad Down (tap)        | Save a screenshot       |
+| L+R+Z+D-Pad Down (hold 1s)    | Start/stop recording    |
+| C-Stick down / up             | Screenshot / start/stop recording (not in the Jewel Case games view, where the C-Stick turns the case) |
 
 In the Games cover flow, left/right moves one game, up/down or L/R jumps five and holding the Control Stick scrolls continuously. In the Jewel Case view the same keys move between cases, the C-Stick turns the case, A plays (B cancels), Y stops the disc spinning and X starts a slideshow; see [the Jewel Case guide](docs/jewel-case.md).
 

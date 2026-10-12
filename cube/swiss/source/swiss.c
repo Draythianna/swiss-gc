@@ -52,6 +52,7 @@
 #include "aram/sidestep.h"
 #include "gui/FrameBufferMagic.h"
 #include "gui/IPLFontWrite.h"
+#include "gui/capture.h"
 #include "devices/deviceHandler.h"
 #include "devices/filelock.h"
 #include "devices/filemeta.h"
@@ -649,6 +650,8 @@ uiDrawObj_t* renderGamesJewelCase(file_handle** directory, int num_files, uiDraw
 		curSelection = num_files-1;
 	}
 	JewelCase_Enter(num_files, curSelection);
+	// the C-Stick turns the case here: screen capture keeps to its button combo
+	Capture_SetStickShortcuts(false);
 	uiDrawObj_t *loadingBox = DrawProgressLoading(PROGRESS_BOX_TOPRIGHT);
 	DrawPublish(loadingBox);
 	meta_thread_start(loadingBox);
@@ -762,6 +765,7 @@ uiDrawObj_t* renderGamesJewelCase(file_handle** directory, int num_files, uiDraw
 	}
 	meta_thread_stop();
 	DrawDispose(loadingBox);
+	Capture_SetStickShortcuts(true);
 	return filePanel;
 }
 
@@ -1464,6 +1468,7 @@ void load_app(ExecutableFile *fileToPatch)
 		kenobi_install_engine();
 	}
 	
+	Capture_Stop();
 	if(devices[DEVICE_PATCHES] && !(devices[DEVICE_PATCHES]->quirks & QUIRK_NO_DEINIT)) {
 		devices[DEVICE_PATCHES]->deinit(devices[DEVICE_PATCHES]->initial);
 	}
@@ -1834,6 +1839,7 @@ bool manage_file() {
 
 		// If the devices are not the same, init the destination, fail on non-existing device/etc
 		if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+			Capture_Stop();
 			devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );	
 			deviceHandler_setStatEnabled(0);
 			if(devices[DEVICE_DEST]->init( devices[DEVICE_DEST]->initial )) {
@@ -1854,6 +1860,7 @@ bool manage_file() {
 		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
 		if(ret) {
 			if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {
+				Capture_Stop();
 				devices[DEVICE_DEST]->deinit( devices[DEVICE_DEST]->initial );
 			}
 			devices[DEVICE_DEST] = NULL;
@@ -2334,6 +2341,7 @@ void load_game() {
 			DrawDispose(msgBox);
 			goto fail;
 		}
+		Capture_Stop();
 		if(!(devices[DEVICE_CUR]->quirks & QUIRK_NO_DEINIT)) {
 			devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
 		}
@@ -2482,6 +2490,7 @@ fail_patched:
 			free(filesToPatch[i].patchFile);
 		}
 		if(devices[DEVICE_PATCHES] != devices[DEVICE_CUR]) {
+			Capture_Stop();
 			devices[DEVICE_PATCHES]->deinit(devices[DEVICE_PATCHES]->initial);
 		}
 		devices[DEVICE_PATCHES] = NULL;
@@ -3034,6 +3043,7 @@ void select_device(int type)
 	}
 	while (padsButtonsHeld() & BUTTON_A){ VIDEO_WaitVSync (); }
 	// Deinit any existing device
+	Capture_Stop();
 	if(devices[type] != NULL) {
 		// Don't deinit our current device when selecting a destination device
 		if(!(type == DEVICE_DEST && devices[type] == devices[DEVICE_CUR])) {
@@ -3054,6 +3064,7 @@ void menu_loop()
 	if(needsDeviceChange) {
 		freeFiles();
 		if(devices[DEVICE_CUR]) {
+			Capture_Stop();
 			devices[DEVICE_PREV] = devices[DEVICE_CUR];
 			devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
 		}
@@ -3109,7 +3120,7 @@ void menu_loop()
 			else {
 				scanFiles();
 			}
-			if(getCurrentDirEntryCount()<=0) { devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial); needsDeviceChange=1; break;}
+			if(getCurrentDirEntryCount()<=0) { Capture_Stop(); devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial); needsDeviceChange=1; break;}
 			needsRefresh = 0;
 			curMenuLocation = ON_FILLIST;
 			DrawUpdateMenuButtons((curMenuLocation == ON_OPTIONS) ? curMenuSelection : MENU_NOSELECT);
@@ -3207,6 +3218,7 @@ void menu_loop()
 						break;
 					case MENU_EXIT:
 						if(devices[DEVICE_CUR] != NULL) {
+							Capture_Stop();
 							devices[DEVICE_CUR]->deinit(devices[DEVICE_CUR]->initial);
 						}
 						if(swissSettings.hasFlippyDrive) {

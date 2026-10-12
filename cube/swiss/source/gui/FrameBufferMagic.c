@@ -31,6 +31,7 @@
 #include "scene3d.h"
 #include "uisound.h"
 #include "jewelcase.h"
+#include "capture.h"
 
 #define GUI_MSGBOX_ALPHA 225
 
@@ -2331,6 +2332,37 @@ static void drawActivateFade(void)
 	Scene3D_DrawGradientRect(0, 0, 640, 480, c, c);
 }
 
+// Screenshot / recording status, drawn after the frame has been captured so it never shows up in one
+static void drawCaptureOverlay(void)
+{
+	char text[96];
+	bool recording;
+	float alpha;
+	if(!Capture_Overlay(text, sizeof(text), &recording, &alpha)) return;
+	// The activation fade before this leaves the 3D scene's vertex format set up
+	drawInit();
+
+	float scale = 0.5f;
+	int dot = recording ? 14 : 0;
+	int textW = GetTextSizeInPixels(text) * scale;
+	if(textW > 520) {
+		scale *= 520.0f / textW;
+		textW = 520;
+	}
+	int h = 24, w = textW + dot + 24;
+	int x = 616 - w, y = 30;
+	GXColor fill = THEME_PANEL_DARK, border = THEME_BORDER;
+	fill.a *= alpha;
+	border.a *= alpha;
+	_DrawSimpleBox(x, y, w, h, 0, fill, border);
+	if(recording) {
+		float pulse = 0.6f + 0.4f*sinf(Scene3D_Time()*5.0f);
+		GXColor red = (GXColor) {235, 40, 48, (u8)(255.0f * alpha * pulse)};
+		Scene3D_DrawGradientRect(x + 11, y + h/2 - 5, 10, 10, red, red);
+	}
+	drawString(x + 12 + dot, y + h/2, text, scale, ALIGN_LEFT, (GXColor) {255,255,255,(u8)(255.0f * alpha)});
+}
+
 // External
 // Container for the file browser, it recedes into the scene while the home menu is open
 uiDrawObj_t* DrawFilePanel()
@@ -3044,6 +3076,7 @@ static void *videoUpdate(void *videoEventQueue) {
 		Scene3D_NewFrame();
 		UI_SetOverscan(1.0f - swissSettings.uiOverscan / 100.0f);
 		UISound_Poll();
+		Capture_Poll();
 		GXRModeObj *vmode = getVideoMode();
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
@@ -3065,6 +3098,13 @@ static void *videoUpdate(void *videoEventQueue) {
 		}
 		u16 width = vmode->fbWidth;
 		u16 height = GX_SetDispCopyYScale(getYScaleFactor(vmode->efbHeight, vmode->xfbHeight));
+		if(Capture_WantsFrame()) {
+			// Grab the frame without the overlay, then copy again once it's drawn on top
+			GX_CopyDisp(xfb[whichfb], GX_FALSE);
+			GX_DrawDone();
+			Capture_Frame(xfb[whichfb], width, height);
+		}
+		drawCaptureOverlay();
 		// the copy only clears depth while depth writes are on: leave none behind
 		// for the 3D views that test against it (the jewel cases)
 		GX_SetZMode(GX_ENABLE, GX_ALWAYS, GX_TRUE);
@@ -3133,6 +3173,7 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	init_textures();
 	Scene3D_Init();
 	UISound_Init();
+	Capture_Init();
 	uiDrawObj_t *container = DrawContainer();
 	if(!black) {
 		DrawAddChild(container, DrawScene3D());
@@ -3226,6 +3267,7 @@ void DrawShutdown() {
 	lwp_t thread = video_thread;
 	video_thread = LWP_THREAD_NULL;
 	LWP_JoinThread(thread, NULL);
+	Capture_Shutdown();
 	GX_SetCurrentGXThread();
 	unsetVideoMode();
 }

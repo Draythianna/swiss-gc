@@ -22,6 +22,7 @@
 #include "devices/deviceHandler.h"
 #include "gui/FrameBufferMagic.h"
 #include "gui/IPLFontWrite.h"
+#include "gui/capture.h"
 
 #define FST_ENTRY_SIZE 12
 
@@ -660,6 +661,7 @@ int patch_gcm(ExecutableFile *filesToPatch, int numToPatch) {
 		
 		if(patched) {
 			if(!patchDeviceReady) {
+				Capture_Stop();
 				deviceHandler_setStatEnabled(0);
 				if(devices[DEVICE_PATCHES]->init(devices[DEVICE_PATCHES]->initial)) {
 					deviceHandler_setStatEnabled(1);
