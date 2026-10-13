@@ -1288,7 +1288,21 @@ void load_app(ExecutableFile *fileToPatch)
 	if(fileToPatch != NULL && fileToPatch->file != NULL) {
 		argz = getExternalPath(fileToPatch->file->name);
 		argz_len = strlen(argz) + 1;
-		
+
+		// The FST staging address is computed from image-declared sizes; a
+		// crafted MaxFSTSize/fstLength could wrap it to an arbitrary address
+		// and the FST read below would write image data there (S-03).
+		{
+			BOOL isTgcFst = (fileToPatch->tgcBase + fileToPatch->tgcFileStartArea) != 0;
+			u32 allocSize = (fileToPatch->fstSize + 31) & ~31u;
+			u32 maxSize = topAddr - 0x81300000;
+			if(!fileToPatch->fstSize || allocSize > maxSize ||
+					(!isTgcFst && ((GCMDisk.MaxFSTSize + 31) & ~31u) > maxSize)) {
+				message = "Invalid FST size in image!";
+				goto fail_early;
+			}
+		}
+
 		// For a DOL from a TGC, redirect the FST to the TGC FST.
 		if(fileToPatch->tgcBase + fileToPatch->tgcFileStartArea != 0) {
 			// Read FST to top of Main Memory (round to 32 byte boundary)
