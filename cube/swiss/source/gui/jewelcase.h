@@ -31,6 +31,7 @@ void JewelCase_SetOpen(bool open);
 bool JewelCase_IsOpen(void);
 bool JewelCase_Launch(void);
 bool JewelCase_IsLaunching(void);
+bool JewelCase_IsCovered(void);
 bool JewelCase_LaunchDone(void);
 int  JewelCase_Selected(void);
 void JewelCase_SetDrag(float x, float y, bool active);

@@ -122,11 +122,12 @@ enum VideoEventType
 	EV_PAGEHEADER,
 	EV_SELECTBAR,
 	EV_COVERFLOW,
-	EV_JEWELCASE
+	EV_JEWELCASE,
+	EV_COVER
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "MenuButtons", "Tooltip", "TitleBar", "Scene3D", "PageHeader", "SelectBar", "Coverflow", "JewelCase"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "MenuButtons", "Tooltip", "TitleBar", "Scene3D", "PageHeader", "SelectBar", "Coverflow", "JewelCase", "Cover"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -1853,6 +1854,24 @@ uiDrawObj_t* DrawTransparentBox(int x1, int y1, int x2, int y2)
 	return event;
 }
 
+// External
+// Black sheet over the screen; publish it while a new screen is loading
+uiDrawObj_t* DrawCover(void)
+{
+	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
+	event->type = EV_COVER;
+	event->data = NULL;
+	return event;
+}
+
+// Internal
+// A solid black sheet over everything published before it: keeps the previous
+// screen out of sight while the next one is still loading
+static void _DrawCover(uiDrawObj_t *evt) {
+	(void)evt;
+	Scene3D_DrawGradientRect(0, 0, 640, 480, (GXColor) {0, 0, 0, 255}, (GXColor) {0, 0, 0, 255});
+}
+
 // Internal
 static void _DrawScene3D(uiDrawObj_t *evt) {
 	if(customBackdrop) {
@@ -3021,6 +3040,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 			break;
 		case EV_JEWELCASE:
 			_DrawJewelCase(videoEvent);
+			break;
+		case EV_COVER:
+			_DrawCover(videoEvent);
 			break;
 		default:
 			break;

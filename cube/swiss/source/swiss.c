@@ -543,9 +543,10 @@ void drawGamesCoverflow(file_handle** directory, int num_files, uiDrawObj_t *con
 }
 
 // Games collection (every disc image on the device, shown as a cover flow)
-uiDrawObj_t* renderGamesGrid(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
+uiDrawObj_t* renderGamesGrid(file_handle** directory, int num_files, uiDrawObj_t* filePanel, uiDrawObj_t* coverBox)
 {
 	if(num_files<=0) {
+		if(coverBox) DrawDispose(coverBox);
 		needsRefresh=1;
 		return filePanel;
 	}
@@ -562,6 +563,11 @@ uiDrawObj_t* renderGamesGrid(file_handle** directory, int num_files, uiDrawObj_t
 		drawGamesCoverflow(directory, num_files, newPanel);
 		filePanel = DrawRepublish(filePanel, newPanel);
 		DrawUpdateProgressLoading(loadingBox, -1);
+		if(coverBox) {
+			VIDEO_WaitVSync ();	// one covered frame under the load cover, then drop it
+			DrawDispose(coverBox);
+			coverBox = NULL;
+		}
 		
 		u32 waitButtons = BUTTON_START|BUTTON_B|BUTTON_A|BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_L|BUTTON_R;
 		while ((padsStickX() > -16 && padsStickX() < 16) && !(padsButtonsHeld() & waitButtons))
@@ -625,8 +631,9 @@ static void drawGamesJewelCase(file_handle** directory, int num_files, uiDrawObj
 	// playing: the case has the screen to itself as it goes to black
 	if(JewelCase_IsLaunching()) return;
 
-	// the name and where it is in the list, as the cover flow has them but further
-	// in, clear of a CRT's edges
+	// the name and where it is in the list, but only once the cover is
+	// lifting: until then the scene is still coming in
+	if (!JewelCase_IsCovered()) {
 	file_handle *file = directory[curSelection];
 	const char *title = file->meta && file->meta->displayName ? file->meta->displayName : getRelativeName(file->name);
 	float scale = GetTextScaleToFitInWidthWithMax((char*)title, 400, 0.75f);
@@ -636,13 +643,15 @@ static void drawGamesJewelCase(file_handle** directory, int num_files, uiDrawObj
 	if(id[0]) sprintf(txtbuffer, "%s  \267  %i of %i", id, curSelection + 1, num_files);
 	else sprintf(txtbuffer, "%i of %i", curSelection + 1, num_files);
 	DrawAddChild(containerPanel, DrawStyledLabel(getVideoMode()->fbWidth - 44, 94, txtbuffer, 0.625f, ALIGN_RIGHT, accentColor));
+	}
 }
 
 // Games collection as jewel cases: A opens the case and plays the game,
 // left/right swaps to the next case, the C-stick turns it, Y spins the disc
-uiDrawObj_t* renderGamesJewelCase(file_handle** directory, int num_files, uiDrawObj_t* filePanel)
+uiDrawObj_t* renderGamesJewelCase(file_handle** directory, int num_files, uiDrawObj_t* filePanel, uiDrawObj_t* coverBox)
 {
 	if(num_files<=0) {
+		if(coverBox) DrawDispose(coverBox);
 		needsRefresh=1;
 		return filePanel;
 	}
@@ -687,6 +696,11 @@ uiDrawObj_t* renderGamesJewelCase(file_handle** directory, int num_files, uiDraw
 			}
 		}
 		VIDEO_WaitVSync();
+		if(coverBox) {
+			// the scene is covering the screen itself now: drop the load cover
+			DrawDispose(coverBox);
+			coverBox = NULL;
+		}
 
 		u32 held = padsButtonsHeld(), pressed = held & ~prev;
 		prev = held;
@@ -3171,16 +3185,20 @@ void menu_loop()
 	}
 
 	uiDrawObj_t *filePanel = NULL;
+	uiDrawObj_t *coverBox = NULL;		// hides the old screen while the games list loads
 	while(1) {
 		DrawUpdateMenuButtons((curMenuLocation == ON_OPTIONS) ? curMenuSelection : MENU_NOSELECT);
 		if(devices[DEVICE_CUR] != NULL && needsRefresh) {
 			curMenuLocation=ON_OPTIONS;
 			curSelection=0; curMenuSelection=0;
 			if(gamesMode) {
+				coverBox = DrawPublish(DrawCover());
 				uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Finding games\205"));
 				scanGames();
 				DrawDispose(msgBox);
 				if(getSortedDirEntryCount() <= 0) {
+					DrawDispose(coverBox);
+					coverBox = NULL;
 					msgBox = DrawPublish(DrawMessageBox(D_INFO, "No GameCube games were found on this device."));
 					sleep(2);
 					DrawDispose(msgBox);
@@ -3208,9 +3226,10 @@ void menu_loop()
 			if(gamesMode) {
 				fileBrowserType = -1;
 				if(swissSettings.gamesView == GAMES_VIEW_JEWELCASE)
-					filePanel = renderGamesJewelCase(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
+					filePanel = renderGamesJewelCase(getSortedDirEntries(), getSortedDirEntryCount(), filePanel, coverBox);
 				else
-					filePanel = renderGamesGrid(getSortedDirEntries(), getSortedDirEntryCount(), filePanel);
+					filePanel = renderGamesGrid(getSortedDirEntries(), getSortedDirEntryCount(), filePanel, coverBox);
+				coverBox = NULL;
 			}
 			switch(fileBrowserType) {
 				case -1:

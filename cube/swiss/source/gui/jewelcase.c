@@ -1235,6 +1235,11 @@ enum { PH_REST, PH_OPENING, PH_OPEN, PH_CLOSING };
 #define LAUNCH_FADE_LEN 0.7f
 #define LAUNCH_DONE 1.4f
 #define LAUNCH_NEAR 70.0f			// how close the camera ends to the disc
+// Coming in, the scene sits under black: lifted as soon as the case to show
+// has its art, but never longer than a slow device can justify, then faded.
+#define INTRO_MIN 0.15f
+#define INTRO_MAX 1.0f
+#define INTRO_FADE 0.45f
 
 static struct {
 	float t;
@@ -1262,6 +1267,8 @@ static struct {
 	bool launching;
 	float launchAt;		// when the lid is (or was) open
 	float zoom, fade;
+	// coming in under black (1 covered, 0 shown) and when the cover went up
+	float intro, introAt;
 } jc = { .queue = -1, .spinOn = true, .spinRate = SPIN_RATE, .paused = true, .dockActive = -1, .dockPrev = -1 };
 
 static pose_t restPose(float t, float seed)
@@ -1441,11 +1448,15 @@ void JewelCase_Enter(int count, int selected)
 		jc.clock = 0;
 		jc.railPos = (selected >= 0 && selected < count) ? selected : 0;
 		jc.dockActive = jc.dockPrev = -1;
+		jc.intro = 1;
+		jc.introAt = jc.t;
 	}
 	if (jc.launching) {
-		// back from a game that didn't start
+		// back from a game that didn't start: come back in from black too
 		jc.launching = false;
 		jc.zoom = jc.fade = 0;
+		jc.intro = 1;
+		jc.introAt = jc.t;
 		jc.phase = PH_REST;
 		jc.phaseAt = jc.t;
 		jc.autoOpen = jc.closeAfter = false;
@@ -1494,6 +1505,8 @@ bool JewelCase_Launch(void)
 }
 
 bool JewelCase_IsLaunching(void) { return jc.launching; }
+
+bool JewelCase_IsCovered(void) { return jc.intro > 0.002f; }
 // The picture has gone black: the game can be started
 bool JewelCase_LaunchDone(void) { return jc.launching && jc.t >= jc.launchAt + LAUNCH_DONE; }
 
@@ -2804,6 +2817,17 @@ void JewelCase_Draw(const jewel_entry_t *entries, int count)
 		cases[i].art = findArt(entries[cases[i].index].id);
 		if (cases[i].art) cases[i].art->lastUse = frameNo;
 	}
+	// coming in under black: wait for the shown case's art (or give the slowest
+	// of devices a second at it), hold a beat past ready, then lift the cover
+	if (jc.intro > 0) {
+		bool ready = n == 0;
+		for (int i = 0; i < n; i++) if (cases[i].art) ready = true;
+		float held = t - jc.introAt;
+		if (jc.intro >= 1.0f) {
+			if ((ready && held >= INTRO_MIN) || held >= INTRO_MAX) jc.intro = 1.0f - 1e-3f;
+		}
+		else jc.intro = fmaxf(0.0f, jc.intro - dt / INTRO_FADE);
+	}
 	// playing: the camera runs in to the disc
 	guMtxIdentity(view);
 	view[2][3] = -camDist;
@@ -2887,8 +2911,9 @@ void JewelCase_Draw(const jewel_entry_t *entries, int count)
 
 	if (count > 0 && showDock) drawDock(entries, count, dt, progress);
 
-	// and to black
-	if (jc.fade > 0.002f) {
+	// and to black: the launch fade, or the cover held while coming in
+	float cover = fmaxf(jc.fade, jc.intro);
+	if (cover > 0.002f) {
 		uiPipeline();
 		Mtx id;
 		guMtxIdentity(id);
@@ -2898,7 +2923,7 @@ void JewelCase_Draw(const jewel_entry_t *entries, int count)
 		GX_LoadProjectionMtx(o, GX_ORTHOGRAPHIC);
 		GX_SetZMode(GX_DISABLE, GX_ALWAYS, GX_FALSE);
 		GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
-		u8 a = (u8)(sat(jc.fade) * 255);
+		u8 a = (u8)(smoothstep(0, 1, sat(cover)) * 255);
 		GX_Begin(GX_QUADS, VTXFMT_DIR, 4);
 		emitColor(-8, -8, 0, 0, 0, 0, a);
 		emitColor(648, -8, 0, 0, 0, 0, a);
