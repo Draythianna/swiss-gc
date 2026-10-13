@@ -106,8 +106,8 @@ char *setCurPath(char *path) {
 		curPath = malloc(4096);
 	}
 	memset(curPath, 0, 4096);
-	strcpy(curPath, path);
-	
+	strncpy(curPath, path, 4095);
+
 	return curPath;
 }
 
@@ -129,26 +129,26 @@ void cache_path() {
 		struct dirent *ent;
 		struct stat fstat;
 		printf("Current DIR: %s\n",curPath);
-		while ((ent = readdir (dir)) != NULL) {
+		while ((ent = readdir (dir)) != NULL && cached_files_num < 2048) {
 			// Skip parent links
 			if(((strlen(ent->d_name)==2) && !strncmp(ent->d_name, "..", 2)) ||
 				((strlen(ent->d_name)==1) && !strncmp(ent->d_name, ".", 1))) {
 				continue;
 			}
-			char *path = malloc(4096);
-			memset(path,0,4096);
-			sprintf(path, "%s/%s",curPath,ent->d_name);
-			stat(path, &fstat);
-			printf ("%s %i [%s]\n", ent->d_name, fstat.st_size, S_ISDIR(fstat.st_mode) ? "DIR":"FILE");
+			char path[4096];
+			if(snprintf(path, sizeof(path), "%s/%s", curPath, ent->d_name) >= (int)sizeof(path))
+				continue;	// path too long, drop it
+			if(stat(path, &fstat) != 0)
+				continue;
+			printf ("%s %i [%s]\n", ent->d_name, (int)fstat.st_size, S_ISDIR(fstat.st_mode) ? "DIR":"FILE");
 			memset(&cached_files[cached_files_num],0,sizeof(file_handle));
-			sprintf(&cached_files[cached_files_num].name[0],"%s",path);
+			snprintf(cached_files[cached_files_num].name, sizeof(cached_files[0].name), "%s", path);
 			cached_files[cached_files_num].size = fstat.st_size;
 			cached_files[cached_files_num].fileType = S_ISDIR(fstat.st_mode) ? IS_DIR:IS_FILE;
 			cached_files_num++;
-			free(path);
 		}
 		closedir (dir);
-	} 
+	}
 	else {
 		fprintf (stderr, "Could not read directory [%s]\n",getCurPath());
 		exit(EXIT_FAILURE);
@@ -158,14 +158,18 @@ void cache_path() {
 void send_file_data(usb_data_req *req) {
 	printf("Read File: offset %08X, size %i          \r", req->offset, req->size);
 	if(served_file_fp) {
+		// Cap the request so a bogus console can't make us allocate hallucinations
+		uint32_t size = req->size;
+		if(size > 16*1024*1024) size = 16*1024*1024;
 		fseek(served_file_fp, req->offset, SEEK_SET);
 		// Read and Send
-		void *buffer = (void*)malloc(req->size);
-		fread(buffer, 1, req->size, served_file_fp);
-		gecko_write(buffer, req->size);
+		void *buffer = malloc(size);
+		if(!buffer) return;
+		size_t got = fread(buffer, 1, size, served_file_fp);
+		gecko_write(buffer, got);	// never transmit bytes we didn't read
 		free(buffer);
 	}
-	
+
 }
 
 int main (int argc, char **argv) {
@@ -208,8 +212,9 @@ int main (int argc, char **argv) {
 			else if(resp == ASK_OPENPATH) {
 				printf("Got Open Path (%02X) request from GC\n",resp);
 				gecko_send_byte(&ANS_READY);
-				// Read path requested by GC and set it
+				// Read path requested by GC and set it (always NUL-terminate)
 				gecko_read(getCurPath(), 4096);
+				getCurPath()[4095] = 0;
 				printf("Got path: %s\n",getCurPath());
 				cache_path();
 			}
@@ -234,15 +239,16 @@ int main (int argc, char **argv) {
 				// Read file, offset and size requested by GC
 				char filename[1024];
 				memset(&filename[0], 0, 1024);
-				gecko_read(&filename[0], 1024);
+				gecko_read(&filename[0], 1023);
+				filename[1023] = 0;
 				// compare, open file.
 				if(strcmp((const char*)&served_file, &filename[0])) {
 					if(served_file_fp) {
 						printf("Closed File %s\n",served_file);
 						fclose(served_file_fp);
 						served_file_fp = NULL;
-					}	
-					strcpy((char*)served_file, &filename[0]);
+					}
+					snprintf((char*)served_file, sizeof(served_file), "%s", &filename[0]);
 					served_file_fp = fopen(&served_file[0], "rb");
 					printf("Opened File %s\n",served_file);
 				}

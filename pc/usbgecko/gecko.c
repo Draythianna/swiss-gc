@@ -150,7 +150,7 @@ void gecko_send_byte(unsigned char *byte) {
 int gecko_read (void *buf, size_t count) {
 #ifndef __WIN32__
 	size_t left, chunk;
-	size_t res;
+	ssize_t res;
 
 	left = count;
 	while (left) {
@@ -163,8 +163,8 @@ int gecko_read (void *buf, size_t count) {
 			perror ("gecko_read");
 			return 1;
 		}
-		left -= res;
-		buf += res;
+		left -= (size_t)res;
+		buf += (size_t)res;
 		usleep(100);
 	}
 #else
