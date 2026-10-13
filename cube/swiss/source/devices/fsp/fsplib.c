@@ -1139,6 +1139,8 @@ int fsp_install(FSP_SESSION *s,const char *fname,time_t timestamp)
         {
             if (timestamp != 0)
             {
+                if (out.len + 4 > FSP_SPACE)
+                    return -1;
                 /* add timestamp extra data */
                 *(uint32_t *)(out.buf+out.len)=htonl(timestamp);
                 out.xlen=4;

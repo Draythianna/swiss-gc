@@ -1443,7 +1443,8 @@ void config_init_environ() {
 	}
 	value = getenv("USBGECKO_CHANNEL");
 	if(value != NULL) {
-		swissSettings.enableUSBGecko = USBGECKO_MEMCARD_SLOT_A + atoi(value);
+		int ch = atoi(value);
+		swissSettings.enableUSBGecko = USBGECKO_MEMCARD_SLOT_A + (in_range(ch, 0, 1) ? ch : 0);
 	}
 	value = getenv("USBGECKO_SAFE");
 	if(value != NULL) {

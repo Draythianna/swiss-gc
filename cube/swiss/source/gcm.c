@@ -476,8 +476,10 @@ int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, cha
 	if(tgcHeader.apploaderOffset != 0 && numFiles + 2 <= maxFiles) {
 		ApploaderHeader apploaderHeader;
 		file->device->seekFile(file,tgc_base+tgcHeader.apploaderOffset,DEVICE_HANDLER_SEEK_SET);
-		file->device->readFile(file,&apploaderHeader,sizeof(ApploaderHeader));
-		
+		if(file->device->readFile(file,&apploaderHeader,sizeof(ApploaderHeader)) != sizeof(ApploaderHeader)) {
+			return numFiles;
+		}
+
 		filesToPatch[numFiles].file = file;
 		filesToPatch[numFiles].offset = tgc_base+tgcHeader.apploaderOffset;
 		filesToPatch[numFiles].size = sizeof(ApploaderHeader) + ((u64)(apploaderHeader.size + 31) & ~31) + ((u64)(apploaderHeader.rebootSize + 31) & ~31);
