@@ -89,6 +89,8 @@ typedef struct
 	SOCKET ctrl_socket;
 	SOCKET data_socket;
 
+	u32 server_ip;          //resolved control-peer address, for data-connection peer checks
+
 	char *name;             //'ftp1', NULL means free item
 	int envIndex;           //position if this item in FTPEnv array
 
@@ -314,6 +316,11 @@ static int SocketRecv(SOCKET theSocket, char* buf, size_t count, bool exitonempt
 		}
 		else
 		{
+			if(ret == 0)
+			{
+				/* Orderly close (EOF): don't spin forever. */
+				return received > 0 ? received : -1;
+			}
 			buf+=ret;
 			count-=ret;
 			received+=ret;
@@ -331,27 +338,31 @@ static int SocketRecv(SOCKET theSocket, char* buf, size_t count, bool exitonempt
 
 static int ftp_getIP(char *buf, unsigned *ip, unsigned short *port)
 {
+	unsigned int tuple[6];
 	char *b;
 	int i;
 
 	*ip = *port = 0;
 
-	buf = strchr(buf,'(') + 1;
+	buf = strchr(buf,'(');
 	if(!buf)
 		return -1;
-	for(i = 0; i<4; i++){
+	buf++;
+	for(i = 0; i<6; i++){
 		b = buf;
-		*ip = (*ip << 8) + (strtoul(b, &b, 0) );
-		buf = strchr(buf, ',') + 1;
+		tuple[i] = strtoul(b, &b, 10);
+		if(b == buf || tuple[i] > 255)
+			return -1;
+		if(i < 5) {
+			buf = strchr(b, ',');
+			if(!buf)
+				return -1;
+			buf++;
+		}
 	}
 
-	*ip = htonl(*ip);
-
-	b = buf;
-	*port = (unsigned short)strtoul(b, &b, 0) << 8;
-	buf = strchr(buf, ',') + 1;
-	b = buf;
-	*port = htons(*port + (unsigned short)strtoul(b, &b, 0));
+	*ip = htonl((tuple[0]<<24) | (tuple[1]<<16) | (tuple[2]<<8) | tuple[3]);
+	*port = htons((tuple[4]<<8) | tuple[5]);
 
 	return 0;
 }
@@ -410,7 +421,10 @@ static int ftp_get_response(ftp_env* env)
 
 	if(multiline)
 	{
+		int lines = 0;
 		do {
+			if(++lines > 64)         // endless banners are a hang, not a response
+				return -1;
 			i = ftp_readline(env->ctrl_socket, buf, FTP_MAX_LINE);
 			if(i < 0)
 			{
@@ -511,6 +525,7 @@ static bool ftp_doconnect( ftp_env* env )
 
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = ResolveHostAddress( env->hostname );
+	env->server_ip = server_addr.sin_addr.s_addr;
 	server_addr.sin_port = htons(env->port);
 
 	env->ctrl_socket = net_socket( AF_INET, SOCK_STREAM, IPPROTO_IP );
@@ -684,6 +699,11 @@ static int ftp_get_fname(char* s, char* d)
 	}
 
 	strcpy(d, &(s[i-1]));
+	if(strlen(d) < 2)
+	{
+		d[0] = 0;
+		return -1;
+	}
 	d[strlen(d) - 2] = 0;
 
 	return 0;
@@ -917,6 +937,16 @@ execute_open_actv_retry:
 		{
 			NET_PRINTF("net_accept() - failed\n",0);
 			net_close(ssock);
+			return -1;
+		}
+
+		// Only the control peer may connect to our data listener.
+		if (data_peer_address.sin_addr.s_addr != env->server_ip)
+		{
+			NET_PRINTF("Rejected data connection from unexpected peer\n",0);
+			net_close(ssock);
+			net_close(*data_sock);
+			*data_sock = INVALID_SOCKET;
 			return -1;
 		}
 
@@ -1237,6 +1267,7 @@ static bool FTP_Connect(ftp_env* env, const char* name, const char* user, const 
 static void AddDirEntry(FTPDIRSTATESTRUCT* state, FTPDIRENTRYLISTITEM*** ppLastItem, const char* name, off_t size, bool isDirectory)
 {
 	FTPDIRENTRYLISTITEM* pItem = ( FTPDIRENTRYLISTITEM* )malloc( sizeof( FTPDIRENTRYLISTITEM ) );
+	if ( pItem == NULL ) return;
 
 	strcpy( pItem->item.name, name);
 	pItem->item.size = size;
@@ -1254,6 +1285,8 @@ static void FTP_FindClose(FTPDIRSTATESTRUCT* state)
 	NET_PRINTF( "FTP_FindClose()\n",0 );
 
 	freeDirList( state->list );
+	state->list = NULL;
+	state->next_enum_item = NULL;
 
 	NET_PRINTF( "FTP_FindClose() ok\n",0 );
 
@@ -1265,6 +1298,7 @@ static void copyDirList(FTPDIRENTRYLISTITEM** ppDest, FTPDIRENTRYLISTITEM* pSrc)
 	while (pSrc != NULL )
 	{
 		*ppDest = malloc( sizeof(FTPDIRENTRYLISTITEM) );
+		if(*ppDest == NULL) return;
 		memcpy( *ppDest, pSrc, sizeof(FTPDIRENTRYLISTITEM) );
 		(*ppDest)->next = NULL;
 		pSrc = (FTPDIRENTRYLISTITEM*)(pSrc->next);
@@ -1719,6 +1753,7 @@ static bool FTP_ReadFile(void* buf, off_t len, off_t offset, FTPFILESTRUCT* file
 
 	if ( len == 0 ) return true;
 
+	int retries = 3;
 read_retry:
 
 	if(snprintf(buf2, sizeof(buf2), "RETR %s%s", env->share, file->filename) >= (int)sizeof(buf2)) return false;
@@ -1732,7 +1767,8 @@ read_retry:
 
 	if( SocketRecv( data_sock, (char*)buf, len, false) < 0)
 	{
-		goto read_retry;
+		if(--retries > 0) goto read_retry;
+		return false;
 	}
 
 	last_off = offset + len;
@@ -1754,9 +1790,10 @@ static bool FTP_WriteFile(void* buf, off_t len, off_t offset, FTPFILESTRUCT* fil
 
     _FTP_lock();
 
+	int retries = 3;
 read_retry:
 
-	if(snprintf(buf2, sizeof(buf2), "STOR %s%s", env->share, file->filename) >= (int)sizeof(buf2)) return false;
+	if(snprintf(buf2, sizeof(buf2), "STOR %s%s", env->share, file->filename) >= (int)sizeof(buf2)) { _FTP_unlock(); return false; }
 
 	if( (res = ftp_execute_open(env, buf2, "I", offset, &data_sock)) < 0)
 	{
@@ -1768,7 +1805,9 @@ read_retry:
 
 	if( SocketSend( data_sock, (char*)buf, len) == false)
 	{
-		goto read_retry;
+		if(--retries > 0) goto read_retry;
+		_FTP_unlock();
+		return false;
 	}
 
 	last_off = offset + len;
@@ -2148,7 +2187,7 @@ static int __ftp_open(struct _reent *r, void *fileStruct, const char *path, int 
 	}
 
 
-	ftp_absolute_path_no_device(path, fixedpath, file->envIndex);
+	ftp_absolute_path_no_device(path, fixedpath, env->envIndex);
 
 	NET_PRINTF("absolutepath='%s'\n", fixedpath );
 
@@ -2503,7 +2542,12 @@ static int __ftp_dirreset(struct _reent *r, DIR_ITER *dirState)
 
 	NET_PRINTF("__ftp_dirreset( path='%s' )\n", path_abs );
 
-	FTP_FindFirst(path_abs, state, &FTPEnv[state->envIndex]);
+	if(!FTP_FindFirst(path_abs, state, &FTPEnv[state->envIndex]))
+	{
+		_FTP_unlock();
+		r->_errno = EIO;
+		return -1;
+	}
 	_FTP_unlock();
 
 	return 0;
