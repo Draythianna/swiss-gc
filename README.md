@@ -124,12 +124,55 @@ In Swiss, set **FSP Host IP**, **FSP Port** and, if you use one, **FSP Password*
 
 ## Build It
 
-This fork doesn't publish releases yet, so build it yourself. With Docker, you get the same image the CI uses:
+Grab the latest from [Releases](../../releases), or build it yourself. The build runs in Docker — the same image the CI uses — so it's identical on every host platform: the script builds the image on first run, and even starts Docker if it isn't running. Two targets:
 
-```sh
-docker/build.sh dev    # quick build: cube/swiss/swiss.dol
-docker/build.sh        # full release package: swiss_r*/
-```
+| Command | What you get |
+|---|---|
+| `…build… dev` | quick dev build: `cube/swiss/swiss.dol` |
+| `…build…` | full release package `swiss_r*/`: every boot medium below, plus `swiss_r*.7z` / `.tar.xz` |
+
+### 🐧 Linux
+
+1. Install Docker Engine: [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) (your distro's `docker.io`/`docker` package usually works), and make sure your user can talk to the daemon (`sudo usermod -aG docker $USER`, then log back in).
+2. ```sh
+   docker/build.sh dev    # quick build
+   docker/build.sh        # full release package
+   ```
+
+Native build, no Docker: install [devkitPro](https://devkitpro.org/) with devkitPPC and libogc2 via `dkp-pacman`, then `make dev` / `make`.
+
+### 🍎 macOS
+
+1. Install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/).
+2. Same commands as Linux (`docker/build.sh dev` or `docker/build.sh`). The script launches Docker Desktop if it isn't running.
+
+### 🪟 Windows
+
+1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) (default WSL2 backend is fine).
+2. From cmd.exe or PowerShell:
+   ```bat
+   docker\build.bat dev    :: quick build
+   docker\build.bat        :: full release package
+   ```
+   Or from Git Bash / MSYS2: `docker/build.sh dev`. Either way, Docker Desktop gets started if needed.
+
+### Using what you built
+
+The full package is organised by boot method — pick the folder that matches yours:
+
+| Folder | Use |
+|---|---|
+| `DOL/` | the Swiss program (`swiss_r*.dol`, plus a `.elf` and small legacy LZ variants). Copy the `.dol` to an SD Gecko/SD2SP2 card (as `ipl.dol` or `boot.dol`), a USB Gecko, or wherever you boot homebrew from |
+| `ISO/` | bootable discs (`ntsc-j`/`ntsc-u`/`pal`) for the optical drive |
+| `GCLoader/`, `FlippyDrive/` | extract-to-root archives for those ODEs |
+| `PicoBoot/`, `PicoLoader/` | UF2 firmware to flash to an RP2040 mod |
+| `MemoryCard/` | `boot.gci`/`xeno.gci` saves to restore onto a memory card |
+| `ActionReplay/` | `AUTOEXEC.DOL`/`SDLOADER.BIN` for Action Replay SD loading |
+| `WiikeyFusion/`, `WODE/` | firmware/ISO for those ODEs, incl. a Recovery ISO |
+| `Wii/` | Homebrew Channel app (extract to the root of a Wii SD card) |
+| `USBGeckoRemoteServer/` | `swissserver` to run on your PC (Linux and Windows builds) |
+
+`SWISS_FILE_DESCRIPTIONS.txt` in the package describes each one in more detail. Inside Swiss, open the Home menu with **B** — Games, Files, Devices, Settings, System Info, Refresh and Exit are on the ring.
 
 Without Docker, `make dev` needs devkitPPC and libogc2 from [devkitPro](https://devkitpro.org/). Copy `swiss.dol` to whatever you boot homebrew from.
 

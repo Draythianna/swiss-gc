@@ -21,6 +21,6 @@ This policy applies only to this fork. The upstream project does not accept LLM 
 
 ## Notes for agents
 
-* Build with `make dev` (requires devkitPPC and libogc2 via devkitPro).
+* Build with `docker/build.sh dev` (or `docker\build.bat dev` on Windows) — the Docker image matches CI and works on Linux/macOS/Windows. Native builds: `make dev` (requires devkitPPC and libogc2 via devkitPro).
 * Some source files use CRLF line endings; preserve them when editing.
 * Changes generally need verification on real hardware or Dolphin.
