@@ -443,6 +443,12 @@ s32 deviceHandler_SYS_readFile(file_handle* file, void* buffer, u32 length) {
 		}
 	}
 
+	// Never let reads/writes exceed the size of the backing ROM region.
+	if(file->fileBase >= NUM_ROMS) return -1;
+	if(file->offset >= rom_sizes[file->fileBase]) return 0;
+	if(length > rom_sizes[file->fileBase] - file->offset)
+		length = rom_sizes[file->fileBase] - file->offset;
+
 	s32 ret = read_rom[file->fileBase](file, buffer, length);
 	file->offset += ret;
 	return ret;
@@ -454,6 +460,11 @@ s32 deviceHandler_SYS_writeFile(file_handle* file, const void* buffer, u32 lengt
 			return -1;
 		}
 	}
+
+	if(file->fileBase >= NUM_ROMS) return -1;
+	if(file->offset >= rom_sizes[file->fileBase]) return 0;
+	if(length > rom_sizes[file->fileBase] - file->offset)
+		length = rom_sizes[file->fileBase] - file->offset;
 
 	s32 ret = write_rom[file->fileBase](file, buffer, length);
 	file->offset += ret;
