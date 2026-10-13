@@ -6,6 +6,10 @@ RUN apt-get update && \
         7zip gcc gcc-mingw-w64-i686 libc6-dev libc6-i386 xorriso git && \
     rm -rf /var/lib/apt/lists/*
 
+# upstream now builds with libiconv-lite (see .github/workflows)
+RUN dkp-pacman -Sy --noconfirm --ask 4 ppc-libiconv-lite && \
+    dkp-pacman -Scc --noconfirm
+
 RUN git config --system --add safe.directory '*'
 
 WORKDIR /swiss
