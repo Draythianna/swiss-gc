@@ -286,7 +286,7 @@ u32 _ataDriveIdentify(int chn) {
 		u16 lbaHi = *(u16*) (&buffer[ATA_IDENT_LBA48SECTORS+2]);
 		u16 lbaMid = *(u16*) (&buffer[ATA_IDENT_LBA48SECTORS+1]);
 		u16 lbaLo = *(u16*) (&buffer[ATA_IDENT_LBA48SECTORS]);
-		ataDriveInfo.sizeInSectors = (u64)(((u64)lbaHi << 32) | (lbaMid << 16) | lbaLo);
+		ataDriveInfo.sizeInSectors = ((u64)lbaHi << 32) | ((u64)lbaMid << 16) | lbaLo;
 		ataDriveInfo.sizeInGigaBytes = (u32)((ataDriveInfo.sizeInSectors<<9) / 1024 / 1024 / 1024);
 	}
 	else {
@@ -301,18 +301,17 @@ u32 _ataDriveIdentify(int chn) {
 	i = 20;
 	// copy serial string
 	memcpy(&ataDriveInfo.serial[0], &buffer[ATA_IDENT_SERIAL],20);
+	ataDriveInfo.serial[20] = 0;
 	// cut off the string (usually has trailing spaces)
-	while((ataDriveInfo.serial[i] == ' ' || !ataDriveInfo.serial[i]) && i >=0) {
-		ataDriveInfo.serial[i] = 0;
-		i--;
+	for(int si = 19; si >= 0 && (ataDriveInfo.serial[si] == ' ' || !ataDriveInfo.serial[si]); si--) {
+		ataDriveInfo.serial[si] = 0;
 	}
 	// copy model string
 	memcpy(&ataDriveInfo.model[0], &buffer[ATA_IDENT_MODEL],40);
+	ataDriveInfo.model[40] = 0;
 	// cut off the string (usually has trailing spaces)
-	i = 40;
-	while((ataDriveInfo.model[i] == ' ' || !ataDriveInfo.model[i]) && i >=0) {
-		ataDriveInfo.model[i] = 0;
-		i--;
+	for(int mi = 39; mi >= 0 && (ataDriveInfo.model[mi] == ' ' || !ataDriveInfo.model[mi]); mi--) {
+		ataDriveInfo.model[mi] = 0;
 	}
 	
 	print_debug("%d GB HDD Connected\n", ataDriveInfo.sizeInGigaBytes);
@@ -379,7 +378,7 @@ int ataUnlock(int chn, int useMaster, char *password, int command)
 	unlockStruct unlock;
 	memset(&unlock, 0, sizeof(unlockStruct));
 	unlock.type = (u16)useMaster;
-	memcpy(unlock.password, password, strlen(password));
+	strlcpy(unlock.password, password, sizeof(unlock.password));
 
 	// write data to the drive 
 	u16 *ptr = (u16*)&unlock;
@@ -390,7 +389,7 @@ int ataUnlock(int chn, int useMaster, char *password, int command)
 	
 	// Wait for BSY to clear
 	u32 temp = 0;
-	while((temp = ataReadStatusReg(chn)) & ATA_SR_BSY);
+	{ u32 _r = 2000000; while(((temp = ataReadStatusReg(chn)) & ATA_SR_BSY) && --_r); if(temp & ATA_SR_BSY) { print_debug("ATA timeout waiting for drive\n"); return -1; } }
 	
 	// If the error bit was set, fail.
 	if(temp & ATA_SR_ERR) {
@@ -408,7 +407,7 @@ int _ataReadSector(int chn, u64 lba, u32 *Buffer)
 	u32 temp = 0;
   	
   	// Wait for drive to be ready (BSY to clear)
-	while(ataReadStatusReg(chn) & ATA_SR_BSY);
+	{ u32 _st = 0, _r = 2000000; while(((_st = ataReadStatusReg(chn)) & ATA_SR_BSY) && --_r); if(_st & ATA_SR_BSY) { print_debug("ATA timeout waiting for drive\n"); return -1; } }
   	
 	// Select the device differently based on 28 or 48bit mode
 	if(ataDriveInfo.lba48Support) {
@@ -442,7 +441,7 @@ int _ataReadSector(int chn, u64 lba, u32 *Buffer)
   	ataWriteByte(chn, ATA_REG_COMMAND, ataDriveInfo.lba48Support ? ATA_CMD_READSECTEXT : ATA_CMD_READSECT);
 
 	// Wait for BSY to clear
-	while((temp = ataReadStatusReg(chn)) & ATA_SR_BSY);
+	{ u32 _r = 2000000; while(((temp = ataReadStatusReg(chn)) & ATA_SR_BSY) && --_r); if(temp & ATA_SR_BSY) { print_debug("ATA timeout waiting for drive\n"); return -1; } }
 	
 	// If the error bit was set, fail.
 	if(temp & ATA_SR_ERR) {
@@ -451,7 +450,7 @@ int _ataReadSector(int chn, u64 lba, u32 *Buffer)
 	}
 
 	// Wait for drive to request data transfer
-	while(!(ataReadStatusReg(chn) & ATA_SR_DRQ));
+	{ u32 _st = 0, _r = 2000000; while(!((_st = ataReadStatusReg(chn)) & ATA_SR_DRQ) && --_r); if(!(_st & ATA_SR_DRQ)) { print_debug("ATA timeout waiting for DRQ\n"); return -1; } }
 	
 	// read data from drive
 	ata_read_buffer(chn, Buffer);
@@ -468,10 +467,11 @@ int _ataReadSector(int chn, u64 lba, u32 *Buffer)
 // Returns 0 on success, -1 on failure.
 int _ataWriteSector(int chn, u64 lba, u32 *Buffer)
 {
+	if(lba >= ataDriveInfo.sizeInSectors) return -1;
 	u32 i, temp;
   	
   	// Wait for drive to be ready (BSY to clear)
-	while(ataReadStatusReg(chn) & ATA_SR_BSY);
+	{ u32 _st = 0, _r = 2000000; while(((_st = ataReadStatusReg(chn)) & ATA_SR_BSY) && --_r); if(_st & ATA_SR_BSY) { print_debug("ATA timeout waiting for drive\n"); return -1; } }
   	
 	// Select the device differently based on 28 or 48bit mode
 	if(ataDriveInfo.lba48Support) {
@@ -505,7 +505,7 @@ int _ataWriteSector(int chn, u64 lba, u32 *Buffer)
   	ataWriteByte(chn, ATA_REG_COMMAND, ataDriveInfo.lba48Support ? ATA_CMD_WRITESECTEXT : ATA_CMD_WRITESECT);
 
   	// Wait for BSY to clear
-	while((temp = ataReadStatusReg(chn)) & ATA_SR_BSY);
+	{ u32 _r = 2000000; while(((temp = ataReadStatusReg(chn)) & ATA_SR_BSY) && --_r); if(temp & ATA_SR_BSY) { print_debug("ATA timeout waiting for drive\n"); return -1; } }
 	
 	// If the error bit was set, fail.
 	if(temp & ATA_SR_ERR) {
@@ -513,7 +513,7 @@ int _ataWriteSector(int chn, u64 lba, u32 *Buffer)
 		return 1;
 	}
 	// Wait for drive to request data transfer
-	while(!(ataReadStatusReg(chn) & ATA_SR_DRQ));
+	{ u32 _st = 0, _r = 2000000; while(!((_st = ataReadStatusReg(chn)) & ATA_SR_DRQ) && --_r); if(!(_st & ATA_SR_DRQ)) { print_debug("ATA timeout waiting for DRQ\n"); return -1; } }
 
 	// Write data to the drive
 	if(_ideexi_version < IDE_EXI_V3) {
@@ -527,7 +527,7 @@ int _ataWriteSector(int chn, u64 lba, u32 *Buffer)
 	}
 	
 	// Wait for the write to finish
-	while(ataReadStatusReg(chn) & ATA_SR_BSY);
+	{ u32 _st = 0, _r = 2000000; while(((_st = ataReadStatusReg(chn)) & ATA_SR_BSY) && --_r); if(_st & ATA_SR_BSY) { print_debug("ATA timeout waiting for drive\n"); return -1; } }
 	
 	temp = ataReadStatusReg(chn);
 	// If the error bit was set, fail.
