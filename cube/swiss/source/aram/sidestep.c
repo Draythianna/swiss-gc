@@ -311,7 +311,7 @@ u32 DOLSizeFix(DOLHEADER *dol)
 *
 * Pass in a memory pointer to a previously loaded DOL
 ****************************************************************************/
-int DOLtoARAM(unsigned char *dol, char *argz, size_t argz_len)
+int DOLtoARAM(unsigned char *dol, size_t dol_len, char *argz, size_t argz_len)
 {
   DOLHEADER *dolhdr;
   u32 sizeinbytes;
@@ -344,11 +344,23 @@ int DOLtoARAM(unsigned char *dol, char *argz, size_t argz_len)
   for (i = 0; i < MAXTEXTSECTION; i++)
   {
     /*** This may seem strange, but in developing d0lLZ we found some with section addresses with zero length ***/
+    /*** Text section extents must not lie outside the loaded image. ***/
+    if ((u64)dolhdr->textOffset[i] + dolhdr->textLength[i] > dol_len ||
+        (u64)dolhdr->dataOffset[i] + dolhdr->dataLength[i] > dol_len)
+      return 0;
+
     if (dolhdr->textOffset[i] && dolhdr->textLength[i])
     {
+      if (dolhdr->textAddress[i] < 0x80003100 ||
+          (u64)dolhdr->textAddress[i] + dolhdr->textLength[i] > 0x81800000)
+        return 0;
       if (dolhdr->entryPoint >= dolhdr->textAddress[i] &&
           dolhdr->entryPoint < (dolhdr->textAddress[i] + dolhdr->textLength[i]))
       {
+        /* entrypoint inside the text section: reading entrypoint[1]/[9]
+           is now guaranteed in-bounds by the extent check above. */
+        if ((u64)(dolhdr->entryPoint - dolhdr->textAddress[i]) + dolhdr->textOffset[i] + 40 > dol_len)
+          return 0;
         u32 *entrypoint = (u32 *) (dol + (dolhdr->entryPoint - dolhdr->textAddress[i]) + dolhdr->textOffset[i]);
 
         if (entrypoint[1] != ARGV_MAGIC)
@@ -370,8 +382,14 @@ int DOLtoARAM(unsigned char *dol, char *argz, size_t argz_len)
   /*** Move data sections ***/
   for (i = 0; i < MAXDATASECTION; i++)
   {
+    if ((u64)dolhdr->dataOffset[i] + dolhdr->dataLength[i] > dol_len)
+      return 0;
+
     if (dolhdr->dataOffset[i] && dolhdr->dataLength[i])
     {
+      if (dolhdr->dataAddress[i] < 0x80003100 ||
+          (u64)dolhdr->dataAddress[i] + dolhdr->dataLength[i] > 0x81800000)
+        return 0;
       ARAMPut(dol + dolhdr->dataOffset[i], (char *) ((dolhdr->dataAddress[i] - minaddress) + ARAMSTART),
               dolhdr->dataLength[i]);
     }
@@ -428,7 +446,7 @@ static void ELFMinMax(Elf32_Ehdr *ehdr, Elf32_Phdr *phdr)
   }
 }
 
-int ELFtoARAM(unsigned char *elf, char *argz, size_t argz_len)
+int ELFtoARAM(unsigned char *elf, size_t elf_len, char *argz, size_t argz_len)
 {
   Elf32_Ehdr *ehdr;
   Elf32_Phdr *phdr;
@@ -444,12 +462,27 @@ int ELFtoARAM(unsigned char *elf, char *argz, size_t argz_len)
   AR_Clear(AR_ARAMINTALL);
 
   /*** First, does this look like an ELF? ***/
-  if (!valid_elf_image(elf))
+  if (elf_len < sizeof(Elf32_Ehdr) || !valid_elf_image(elf))
     return 0;
 
-  /*** Get ELF headers ***/
+  /*** Get ELF headers (bounded by the image size) ***/
   ehdr = (Elf32_Ehdr *) elf;
+  if (ehdr->e_phnum == 0 || ehdr->e_phnum > 64 ||
+      (u64)ehdr->e_phoff + (u64)ehdr->e_phnum * sizeof(Elf32_Phdr) > elf_len)
+    return 0;
   phdr = (Elf32_Phdr *) (elf + ehdr->e_phoff);
+
+  /*** Every loadable segment must lie inside the image. ***/
+  for (i = 0; i < ehdr->e_phnum; i++)
+  {
+    if (phdr[i].p_type == PT_LOAD && phdr[i].p_filesz)
+    {
+      if ((u64)phdr[i].p_offset + phdr[i].p_filesz > elf_len)
+        return 0;
+      if (phdr[i].p_paddr < 0x80003100 || (u64)phdr[i].p_paddr + phdr[i].p_filesz > 0x81800000)
+        return 0;
+    }
+  }
 
   /*** Get ELF stats ***/
   ELFMinMax(ehdr, phdr);
@@ -466,6 +499,8 @@ int ELFtoARAM(unsigned char *elf, char *argz, size_t argz_len)
       if (ehdr->e_entry >= phdr[i].p_paddr &&
           ehdr->e_entry < (phdr[i].p_paddr + phdr[i].p_filesz))
       {
+        if ((u64)(ehdr->e_entry - phdr[i].p_paddr) + phdr[i].p_offset + 40 > elf_len)
+          return 0;
         u32 *entrypoint = (u32 *) (elf + (ehdr->e_entry - phdr[i].p_paddr) + phdr[i].p_offset);
 
         if (entrypoint[1] != ARGV_MAGIC)

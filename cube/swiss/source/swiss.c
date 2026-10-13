@@ -1526,10 +1526,10 @@ void load_app(ExecutableFile *fileToPatch)
 		BINtoARAM(buffer, sizeToRead, 0x80003100, 0x80003100);
 	}
 	else if(type == PATCH_DOL || type == PATCH_DOL_PRS) {
-		DOLtoARAM(buffer, argz, argz_len);
+		DOLtoARAM(buffer, sizeToRead, argz, argz_len);
 	}
 	else if(type == PATCH_ELF) {
-		ELFtoARAM(buffer, argz, argz_len);
+		ELFtoARAM(buffer, sizeToRead, argz, argz_len);
 	}
 	SYS_ResetSystem(SYS_HOTRESET, 0, FALSE);
 	__builtin_unreachable();
@@ -1699,7 +1699,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	}
 
 	if(!memcmp(buffer, ELFMAG, SELFMAG)) {
-		ELFtoARAM(buffer, argz, argz_len);
+		ELFtoARAM(buffer, file->size, argz, argz_len);
 	}
 	else if(endsWith(file->name, "/SDLOADER.BIN")) {
 		BINtoARAM(buffer, file->size, 0x81700000, 0x81700000);
@@ -1708,7 +1708,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 		BINtoARAM(buffer, file->size, 0x80003100, 0x80003100);
 	}
 	else {
-		DOLtoARAM(buffer, argz, argz_len);
+		DOLtoARAM(buffer, file->size, argz, argz_len);
 	}
 	free(argz);
 	free(buffer);

@@ -182,13 +182,13 @@ static void wiiload_handler(int sd, wiiload_read_function_t read, const char *me
 
 	if (buffer) {
 		if (!memcmp(buffer, ELFMAG, SELFMAG))
-			ELFtoARAM(buffer, args, header.args_size);
+			ELFtoARAM(buffer, header.inflate_size, args, header.args_size);
 		else if (args && header.args_size == strlen("SDLOADER.BIN") && !strncasecmp(args, "SDLOADER.BIN", header.args_size))
 			BINtoARAM(buffer, header.inflate_size, 0x81700000, 0x81700000);
 		else if (branchResolve(buffer, PATCH_BIN, 0))
 			BINtoARAM(buffer, header.inflate_size, 0x80003100, 0x80003100);
 		else
-			DOLtoARAM(buffer, args, header.args_size);
+			DOLtoARAM(buffer, header.inflate_size, args, header.args_size);
 	}
 
 	if (header.args_size) free(args);
