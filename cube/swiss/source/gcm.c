@@ -73,29 +73,34 @@ char *get_fst(file_handle *file, u32 file_offset, u32 file_size) {
 }
 
 // Populate the file_offset and file_size for searchFileName from the GCM FST
-void get_fst_details(char *FST, char *searchFileName, u32 *file_offset, u32 *file_size) {
+void get_fst_details(char *FST, char *searchFileName, u32 *file_offset, u32 *file_size, u32 fst_size) {
 	u32 filename_offset, entries, string_table_offset, offset, i;
 	char filename[256];
 	// number of entries and string table location
 	entries = *(unsigned int*)&FST[8];
-	string_table_offset=12*entries; 
-    
+	string_table_offset=12*entries;
+	if(entries == 0 || (u64)entries*12 > fst_size || string_table_offset > fst_size) {
+		*file_offset = -1;
+		return;
+	}
+
 	// go through every entry
-	for (i=1;i<entries;i++) 
-	{ 
-		offset=i*0x0c; 
+	for (i=1;i<entries;i++)
+	{
+		offset=i*0x0c;
 		if(FST[offset]==0) //skip directories
-		{ 
-			filename_offset=(unsigned int)FST[offset+1]*256*256+(unsigned int)FST[offset+2]*256+(unsigned int)FST[offset+3]; 
+		{
+			filename_offset=(unsigned int)FST[offset+1]*256*256+(unsigned int)FST[offset+2]*256+(unsigned int)FST[offset+3];
+			if((u64)string_table_offset+filename_offset >= fst_size) continue;
 			memset(filename,0,256);
-			strcpy(filename,&FST[string_table_offset+filename_offset]); 
-			if(!strcasecmp(filename,searchFileName)) 
+			strlcpy(filename,&FST[string_table_offset+filename_offset],sizeof(filename));
+			if(!strcasecmp(filename,searchFileName))
 			{
 				memcpy(file_offset,&FST[offset+4],4);
 				memcpy(file_size,&FST[offset+8],4);
 				return;
-			}		
-		} 
+			}
+		}
 	}
 	*file_offset = -1;
 }
@@ -105,7 +110,7 @@ void get_gcm_banner(file_handle *file, DiskHeader *diskHeader, u32 *file_offset,
 	char *FST = get_fst(file, diskHeader->FSTOffset, diskHeader->FSTSize);
 	if(!FST) return;
 	
-	get_fst_details(FST, "opening.bnr", file_offset, file_size);
+	get_fst_details(FST, "opening.bnr", file_offset, file_size, diskHeader->FSTSize);
 	free(FST);
 }
 
@@ -118,7 +123,7 @@ void parse_gcm_add(file_handle *file, ExecutableFile *filesToPatch, int *numToPa
 	if(!FST) return;
 	
 	u32 file_offset, file_size;
-	get_fst_details(FST, fileName, &file_offset, &file_size);
+	get_fst_details(FST, fileName, &file_offset, &file_size, diskHeader->FSTSize);
 	free(FST);
 	free(diskHeader);
 	if(file_offset != -1) {
