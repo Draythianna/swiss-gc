@@ -101,7 +101,12 @@ static void *wiiload_read(int sd, size_t insize, size_t outsize, wiiload_read_fu
 {
 	Byte inbuf[4096];
 	z_stream zstream = {0};
-	int ret, pos = 0;
+	size_t pos = 0;
+	int ret, zok = 0;
+
+	// Payloads must be non-empty and small enough to ever fit the target.
+	if (!insize || !outsize || outsize > 32*1024*1024)
+		return NULL;
 
 	void *outbuf = malloc(outsize);
 
@@ -121,10 +126,15 @@ static void *wiiload_read(int sd, size_t insize, size_t outsize, wiiload_read_fu
 		zstream.next_in  = inbuf;
 		zstream.avail_in = ret;
 		ret = inflate(&zstream, Z_NO_FLUSH);
-		if (ret < 0) goto fail;
+		if (ret == Z_STREAM_END) { zok = 1; break; }
+		if (ret < 0 || ret == Z_NEED_DICT) goto fail;
 
-		DrawUpdateProgressBar(progress, pos * 100 / insize);
+		DrawUpdateProgressBar(progress, (int)((u64)pos * 100 / insize));
 	}
+
+	// The stream must have finished and produced exactly the promised size.
+	if (!zok || zstream.total_out != outsize)
+		goto fail;
 
 	inflateEnd(&zstream);
 	return outbuf;
@@ -141,7 +151,7 @@ static void *wiiload_read_args(int sd, size_t size, wiiload_read_function_t read
 
 	if (!args)
 		goto fail;
-	if (read(sd, args, size) < size)
+	if (read(sd, args, size) != (int)size)
 		goto fail;
 
 	return args;
@@ -155,26 +165,25 @@ static void wiiload_handler(int sd, wiiload_read_function_t read, const char *me
 {
 	wiiload_header_t header;
 
-	if (read(sd, &header, sizeof(header)) < sizeof(header))
+	if (read(sd, &header, sizeof(header)) != (int)sizeof(header))
 		return;
 	if (memcmp(&header.magic, "HAXX", 4))
 		return;
 	if (header.version != 5)
 		return;
 
-	setenv("WIILOAD", host, 1);
-
 	int priority = LWP_SetThreadPriority(LWP_THREAD_NULL, LWP_PRIO_NORMAL);
 	LWP_SuspendThread(main_thread);
+	setenv("WIILOAD", host, 1);
 
 	uiDrawObj_t *progress = DrawPublish(DrawProgressBar(false, 0, message));
 	void *buffer = wiiload_read(sd, header.deflate_size, header.inflate_size, read, progress);
-	void *args = wiiload_read_args(sd, header.args_size, read);
+	void *args = header.args_size ? wiiload_read_args(sd, header.args_size, read) : NULL;
 
 	if (buffer) {
 		if (!memcmp(buffer, ELFMAG, SELFMAG))
 			ELFtoARAM(buffer, args, header.args_size);
-		else if (!strncasecmp(args, "SDLOADER.BIN", header.args_size))
+		else if (args && header.args_size == strlen("SDLOADER.BIN") && !strncasecmp(args, "SDLOADER.BIN", header.args_size))
 			BINtoARAM(buffer, header.inflate_size, 0x81700000, 0x81700000);
 		else if (branchResolve(buffer, PATCH_BIN, 0))
 			BINtoARAM(buffer, header.inflate_size, 0x80003100, 0x80003100);
@@ -182,7 +191,7 @@ static void wiiload_handler(int sd, wiiload_read_function_t read, const char *me
 			DOLtoARAM(buffer, args, header.args_size);
 	}
 
-	free(args);
+	if (header.args_size) free(args);
 	free(buffer);
 	DrawDispose(progress);
 
@@ -212,6 +221,9 @@ static void *tcp_thread_func(void *arg)
 			wiiload.cl.sd = net_accept(wiiload.sv.sd, &wiiload.cl.sa, &addrlen);
 
 			if (wiiload.cl.sd != INVALID_SOCKET) {
+				// Don't let a stalled sender freeze the loader forever.
+				struct timeval timeout = {10, 0};
+				net_setsockopt(wiiload.cl.sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 				char addrstr[20] = "TCP:";
 				char *message = NULL;
 				asprintf(&message, "Receiving from %s:%hu", inet_ntoa_r(wiiload.cl.sin.sin_addr, addrstr + strlen(addrstr), sizeof(addrstr) - strlen(addrstr)), wiiload.cl.sin.sin_port);
