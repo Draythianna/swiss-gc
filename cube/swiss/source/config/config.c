@@ -206,7 +206,8 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "BBAUseDHCP=%s\r\n", swissSettings.bbaUseDhcp ? "Yes":"No");
 	fprintf(fp, "ShowHiddenFiles=%s\r\n", swissSettings.showHiddenFiles ? "Yes":"No");
 	fprintf(fp, "UISounds=%s\r\n", swissSettings.uiSounds ? "Yes":"No");
-	fprintf(fp, "UIOverscan=%i\r\n", swissSettings.uiOverscan);
+	fprintf(fp, "UIOverscanX=%i\r\n", swissSettings.uiOverscanX);
+	fprintf(fp, "UIOverscanY=%i\r\n", swissSettings.uiOverscanY);
 	fprintf(fp, "GamesView=%s\r\n", gamesViewStr[swissSettings.gamesView]);
 	fprintf(fp, "RecentListLevel=%s\r\n", recentListLevelStr[swissSettings.recentListLevel]);
 	fprintf(fp, "GameCube Intro=%s\r\n", swissSettings.cubebootIntro ? "Yes":"No");
@@ -644,7 +645,14 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 					swissSettings.uiSounds = !strcmp("Yes", value);
 				}
 				else if(!strcmp("UIOverscan", name)) {
-					swissSettings.uiOverscan = MIN(MAX(atoi(value), 0), 10);
+					// legacy single-axis setting: apply to both
+					swissSettings.uiOverscanX = swissSettings.uiOverscanY = MIN(MAX(atoi(value), 0), 10);
+				}
+				else if(!strcmp("UIOverscanX", name)) {
+					swissSettings.uiOverscanX = MIN(MAX(atoi(value), 0), 25);
+				}
+				else if(!strcmp("UIOverscanY", name)) {
+					swissSettings.uiOverscanY = MIN(MAX(atoi(value), 0), 25);
 				}
 				else if(!strcmp("GamesView", name)) {
 					for(int i = 0; i < GAMES_VIEW_MAX; i++) {
@@ -1092,7 +1100,14 @@ void config_parse_global(char *configData) {
 					swissSettings.uiSounds = !strcmp("Yes", value);
 				}
 				else if(!strcmp("UIOverscan", name)) {
-					swissSettings.uiOverscan = MIN(MAX(atoi(value), 0), 10);
+					// legacy single-axis setting: apply to both
+					swissSettings.uiOverscanX = swissSettings.uiOverscanY = MIN(MAX(atoi(value), 0), 10);
+				}
+				else if(!strcmp("UIOverscanX", name)) {
+					swissSettings.uiOverscanX = MIN(MAX(atoi(value), 0), 25);
+				}
+				else if(!strcmp("UIOverscanY", name)) {
+					swissSettings.uiOverscanY = MIN(MAX(atoi(value), 0), 25);
 				}
 				else if(!strcmp("GamesView", name)) {
 					for(int i = 0; i < GAMES_VIEW_MAX; i++) {

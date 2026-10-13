@@ -45,7 +45,7 @@ void UI_GetTransform(Mtx m, bool *perspective);
 void UI_LoadProjection(void);
 void UI_ApplyTransform(Mtx local, Mtx out);
 void UI_TransformPoint(float *x, float *y, float *z);
-void UI_SetOverscan(float scale);
+void UI_SetOverscan(float scaleX, float scaleY);
 void UI_SnapToPixels(Mtx m);
 bool UI_IsPerspective(void);
 float UI_GetOverscan(void);

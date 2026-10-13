@@ -102,7 +102,8 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_UI_SOUNDS] = "Menu Sounds:\n\nPlays short sound effects when moving around and selecting\nitems in the menus.",
-	[SET_UI_OVERSCAN] = "Menu Overscan:\n\nShrinks the menus towards the centre of the screen so nothing\nis cut off at the edges of TVs that overscan.\n\n0% uses the full picture.",
+	[SET_UI_OVERSCAN] = "Menu Overscan X:\n\nShrinks the menus towards the centre horizontally,\nleaving a margin at the side edges of TVs that crop the\npicture (overscan).\n\n0% uses the full picture.",
+	[SET_UI_OVERSCAN_Y] = "Menu Overscan Y:\n\nShrinks the menus towards the centre vertically,\nleaving a margin at the top and bottom edges of TVs that\ncrop the picture (overscan).\n\n0% uses the full picture.",
 	[SET_GAMES_VIEW] = "Games View:\n\nJewel Case - One clear CD jewel case at a time, the disc spinning\ninside. Disc art is read from swiss/discs/<GAMEID>.png on the\ndevice the games are on (GameTDB\'s disc images fit as they are).\n\nCover Flow - Banners turned and stacked to the sides."
 };
 
@@ -316,8 +317,10 @@ uiDrawObj_t* settings_draw_page(int page_num, int option, ConfigEntry *gameConfi
 		drawSettingEntryString(page, &page_y_ofs, "Load at startup:", getAutoLoadDeviceName(&swissSettings), option == SET_AUTOLOAD, true);
 		drawSettingEntryString(page, &page_y_ofs, "Flatten directory:", swissSettings.flattenDir, option == SET_FLATTEN_DIR, true);
 		drawSettingEntryBoolean(page, &page_y_ofs, "Menu Sounds:", swissSettings.uiSounds, option == SET_UI_SOUNDS, true);
-		sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscan);
-		drawSettingEntryString(page, &page_y_ofs, "Menu Overscan:", uiOverscanStr, option == SET_UI_OVERSCAN, true);
+		sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscanX);
+		drawSettingEntryString(page, &page_y_ofs, "Menu Overscan X:", uiOverscanStr, option == SET_UI_OVERSCAN, true);
+		sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscanY);
+		drawSettingEntryString(page, &page_y_ofs, "Menu Overscan Y:", uiOverscanStr, option == SET_UI_OVERSCAN_Y, true);
 		drawSettingEntryString(page, &page_y_ofs, "Games View:", gamesViewStr[swissSettings.gamesView], option == SET_GAMES_VIEW, true);
 	}
 	else if(page_num == PAGE_NETWORK) {
@@ -686,7 +689,10 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.uiSounds ^= 1;
 			break;
 			case SET_UI_OVERSCAN:
-				swissSettings.uiOverscan = MIN(MAX(swissSettings.uiOverscan + direction, 0), 10);
+				swissSettings.uiOverscanX = MIN(MAX(swissSettings.uiOverscanX + direction, 0), 25);
+			break;
+			case SET_UI_OVERSCAN_Y:
+				swissSettings.uiOverscanY = MIN(MAX(swissSettings.uiOverscanY + direction, 0), 25);
 			break;
 			case SET_GAMES_VIEW:
 				swissSettings.gamesView = (swissSettings.gamesView + direction + GAMES_VIEW_MAX) % GAMES_VIEW_MAX;

@@ -18,7 +18,7 @@
 
 static Mtx uiXform;
 static bool uiPerspective;
-static float uiOverscan = 1.0f;
+static float uiOverscanX = 1.0f, uiOverscanY = 1.0f;
 static bool initialised;
 
 static u64 startTick;
@@ -194,15 +194,18 @@ void UI_LoadProjection(void)
 	else loadOrtho();
 }
 
-// Scale the whole UI about the centre of the screen to keep it inside the visible area
-void UI_SetOverscan(float scale)
+// Scale the whole UI about the centre of the screen, per axis, to keep it
+// inside the visible area of TVs that crop the picture
+void UI_SetOverscan(float scaleX, float scaleY)
 {
-	uiOverscan = scale;
+	uiOverscanX = scaleX;
+	uiOverscanY = scaleY;
 }
 
+// The tighter of the two: safe when one number is needed for both axes
 float UI_GetOverscan(void)
 {
-	return uiOverscan;
+	return uiOverscanX < uiOverscanY ? uiOverscanX : uiOverscanY;
 }
 
 bool UI_IsPerspective(void)
@@ -221,11 +224,11 @@ void UI_SnapToPixels(Mtx m)
 static void applyOverscan(Mtx m)
 {
 	for (int col = 0; col < 4; col++) {
-		m[0][col] *= uiOverscan;
-		m[1][col] *= uiOverscan;
+		m[0][col] *= uiOverscanX;
+		m[1][col] *= uiOverscanY;
 	}
-	m[0][3] += 320.0f * (1.0f - uiOverscan);
-	m[1][3] += 240.0f * (1.0f - uiOverscan);
+	m[0][3] += 320.0f * (1.0f - uiOverscanX);
+	m[1][3] += 240.0f * (1.0f - uiOverscanY);
 }
 
 void UI_ApplyTransform(Mtx local, Mtx out)
@@ -250,8 +253,8 @@ void UI_TransformPoint(float *x, float *y, float *z)
 	if (!initialised) Scene3D_Init();
 	guVector v = {*x, *y, *z};
 	guVecMultiply(uiXform, &v, &v);
-	*x = 320.0f + (v.x - 320.0f) * uiOverscan;
-	*y = 240.0f + (v.y - 240.0f) * uiOverscan;
+	*x = 320.0f + (v.x - 320.0f) * uiOverscanX;
+	*y = 240.0f + (v.y - 240.0f) * uiOverscanY;
 	*z = v.z;
 }
 

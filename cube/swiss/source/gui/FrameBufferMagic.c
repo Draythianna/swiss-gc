@@ -3097,7 +3097,7 @@ static void *videoUpdate(void *videoEventQueue) {
 		}
 		
 		Scene3D_NewFrame();
-		UI_SetOverscan(1.0f - swissSettings.uiOverscan / 100.0f);
+		UI_SetOverscan(1.0f - swissSettings.uiOverscanX / 100.0f, 1.0f - swissSettings.uiOverscanY / 100.0f);
 		UISound_Poll();
 		Capture_Poll();
 		GXRModeObj *vmode = getVideoMode();
