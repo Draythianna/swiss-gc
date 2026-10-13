@@ -28,8 +28,11 @@ uiDrawObj_t* updatescreen_mp3(file_handle *file, int state, int numFiles, int cu
 	DrawAddChild(player, DrawStyledLabel(640/2, 160, txtbuffer, scale, ALIGN_CENTER, defaultColor));
 	memset(txtbuffer, 0, 256);
 	sprintf(txtbuffer, "------------------------------");
-	float percentPlayed = (float)(((float)file->offset / (float)file->size) * 30);
-	txtbuffer[(int)percentPlayed] = '*';
+	int progressIdx = 0;
+	if(file->size && file->offset < file->size)
+		progressIdx = (int)(((u64)file->offset * 30) / file->size);
+	if(progressIdx > 29) progressIdx = 29;
+	txtbuffer[progressIdx] = '*';
 	DrawAddChild(player, DrawStyledLabel(640/2, 210, txtbuffer, 1.0f, ALIGN_CENTER, defaultColor));
 	DrawAddChild(player, DrawStyledLabel(640/2, 300, "(<-) Rewind (->) Forward (X) Vol+ (Y) Vol-", 1.0f, ALIGN_CENTER, defaultColor));
 	DrawAddChild(player, DrawStyledLabel(640/2, 330, "(B) Stop (L) Prev (R) Next (Start) Pause", 1.0f, ALIGN_CENTER, defaultColor));
@@ -40,6 +43,7 @@ uiDrawObj_t* updatescreen_mp3(file_handle *file, int state, int numFiles, int cu
 
 int play_mp3(file_handle *file, int numFiles, int curMP3) {
 	int ret = PLAYER_NEXT;
+	if(!file->size) return ret;
 	file->offset = 0;
 	MP3Player_PlayFile(file, &mp3Reader, NULL);
 	uiDrawObj_t* player = NULL;
@@ -82,7 +86,7 @@ int play_mp3(file_handle *file, int numFiles, int curMP3) {
 		}
 		else if(buttons & BUTTON_RIGHT) {	// Fwd
 			MP3Player_Stop();
-			if(file->offset+0x8000 < file->size) {
+			if(file->size > 0x8000 && file->offset < file->size - 0x8000) {
 				file->offset += 0x8000;
 				MP3Player_PlayFile(file, &mp3Reader, NULL);
 			}
@@ -93,7 +97,7 @@ int play_mp3(file_handle *file, int numFiles, int curMP3) {
 		}
 		else if(buttons & BUTTON_LEFT) {	// Rewind
 			MP3Player_Stop();
-			if(file->offset-0x10000 > 0) file->offset -= 0x10000;
+			if(file->offset > 0x10000) file->offset -= 0x10000;
 			else file->offset = 0;
 			MP3Player_PlayFile(file, &mp3Reader, NULL);
 		}
@@ -142,7 +146,7 @@ void mp3_player(file_handle** allFiles, int numFiles, file_handle* curFile) {
 			break;
 		}
 		if(ret == PLAYER_PREV) {
-			i-=2;
+			i = (i < 2) ? -1 : i - 2;	// -1 so the increment lands on track 0
 		}
 		first = 0;
 	}
