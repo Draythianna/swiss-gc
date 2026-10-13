@@ -66,17 +66,18 @@ void probe_counts(void);
 void probe_sheet_counts(void);
 int main(int argc, char **argv)
 {
-	if (argc > 1 && !strcmp(argv[1], "matcap")) { probe_dump_matcap(argv[2]); return 0; }
+	if (argc > 2 && !strcmp(argv[1], "matcap")) { probe_dump_matcap(argv[2]); return 0; }
 	// usage: preview out_dir id,id,... [t=action...]
 	//   actions: open, play, done, close, next, prev, spin, pause, drag:x:y, undrag, shot:label
 	sdRoot = getenv("JC_SD") ? getenv("JC_SD") : "./sd/";
 	if (getenv("JC_RECORD")) probe_record_mode();
 	gx_noRaster = getenv("JC_NORASTER") != NULL;
 	if (getenv("JC_COUNTS")) { probe_counts(); probe_sheet_counts(); return 0; }
+	if (argc < 3) { fprintf(stderr, "usage: preview out_dir id,... [t=action...]\n"); return 1; }
 	const char *out = argv[1];
 	char ids[64][8];
 	int n = 0;
-	for (char *tok = strtok(argv[2], ","); tok && n < 64; tok = strtok(NULL, ",")) strncpy(ids[n++], tok, 7);
+	for (char *tok = strtok(argv[2], ","); tok && n < 64; tok = strtok(NULL, ",")) { snprintf(ids[n], 8, "%.7s", tok); n++; }
 	jewel_entry_t entries[64];
 	memset(entries, 0, sizeof(entries));
 	for (int i = 0; i < n; i++) strcpy(entries[i].id, ids[i]);
@@ -94,7 +95,9 @@ int main(int argc, char **argv)
 		bool shoot = false;
 		char label[64] = "";
 		while (next < argc && atof(argv[next]) <= t + 1e-4f) {
-			const char *act = strchr(argv[next], '=') + 1;
+			const char *eq = strchr(argv[next], '=');
+			if (!eq) { next++; continue; }
+			const char *act = eq + 1;
 			if (!strcmp(act, "open")) JewelCase_SetOpen(true);
 			else if (!strcmp(act, "play")) JewelCase_Launch();
 			else if (!strcmp(act, "done")) printf("launch done: %d\n", JewelCase_LaunchDone());
@@ -105,7 +108,7 @@ int main(int argc, char **argv)
 			else if (!strcmp(act, "pause")) JewelCase_TogglePause();
 			else if (!strncmp(act, "drag:", 5)) { float x, y; sscanf(act + 5, "%f:%f", &x, &y); JewelCase_SetDrag(x, y, true); }
 			else if (!strcmp(act, "undrag")) JewelCase_SetDrag(0, 0, false);
-			else if (!strncmp(act, "shot:", 5)) { shoot = true; strcpy(label, act + 5); }
+			else if (!strncmp(act, "shot:", 5)) { shoot = true; snprintf(label, sizeof(label), "%.60s", act + 5); }
 			next++;
 		}
 		gx_backdrop();

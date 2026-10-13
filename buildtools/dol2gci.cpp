@@ -189,6 +189,10 @@ int main (int argc, char * const argv[])
 		fprintf(stderr, "can't read dol\n");
 		return -1;
 	} 
+	if (dol_size > 8*1024*1024) {	// far beyond any sane GCI payload
+		fprintf(stderr, "dol too large\n");
+		return -1;
+	}
 	
 	// calculate overal size
 	int icon_size = ((sizeof(dol_icon) + 31) & ~31);
@@ -198,6 +202,10 @@ int main (int argc, char * const argv[])
 	// create GCI file
 	int gci_size = 64 + data_blocks * 8192;
 	u8 *gci_data = (u8 *)malloc(gci_size);
+	if (!gci_data) {
+		fprintf(stderr, "out of memory\n");
+		return -1;
+	}
 		
 	// set up GCI header
 	memcpy(gci_data + 0x00, "DOLX", 4);     // Game Code
