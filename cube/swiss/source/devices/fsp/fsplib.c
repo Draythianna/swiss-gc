@@ -198,12 +198,12 @@ int fsp_pkt_read(FSP_PKT *p,const void *space,size_t recv_len)
    p->seq=ntohs( *(const uint16_t *)(ptr+FSP_OFFSET_SEQ) );
    p->len=ntohs( *(const uint16_t *)(ptr+FSP_OFFSET_LEN) );
    p->pos=ntohl( *(const uint32_t *)(ptr+FSP_OFFSET_POS) );
-   if(p->len > recv_len)
+   if(recv_len < FSP_HSIZE || p->len > (unsigned int)recv_len - FSP_HSIZE)
    {
-       /* bad length field, should not never happen */
+       /* bad length field */
        errno = EMSGSIZE;
        return -1;
-   }   
+   }
    p->xlen=recv_len - p->len - FSP_HSIZE;
    /* now copy data */
    memcpy(p->buf,ptr+FSP_HSIZE,recv_len - FSP_HSIZE);
@@ -392,9 +392,9 @@ FSP_SESSION * fsp_open_session(const char *host,unsigned short port,const char *
     addrin.sin_family = AF_INET;
 
     if (port == 0)
-        addrin.sin_port = 21;
+        addrin.sin_port = htons(21);
     else
-        addrin.sin_port = port;
+        addrin.sin_port = htons(port);
 
     if ( !inet_aton(host,&addrin.sin_addr))
     {
@@ -522,6 +522,12 @@ FSP_DIR * fsp_opendir(FSP_SESSION *s,const char *dirname)
         /* set blocksize */
         if (blocksize == 0 )
             blocksize = in.len;
+        /* cap the total listing (and the server's memory spend) */
+        if (pos + in.len > 1024*1024)
+        {
+            pos = -1;
+            break;
+        }
         /* alloc directory */
         if (dir == NULL)
         {
@@ -639,6 +645,12 @@ int fsp_readdir_native(FSP_DIR *dir,FSP_RDENTRY *entry, FSP_RDENTRY **result)
        }
        if (dir->blocksize - (dir->dirpos % dir->blocksize) < 9)
            ftype= FSP_RDTYPE_SKIP;
+       else if (dir->dirpos + 9 > (int)dir->datasize)
+       {
+           /* truncated trailing record: stop, never read past the buffer */
+           *result = NULL;
+           return 0;
+       }
        else
            /* get the file type */
            ftype=dir->data[dir->dirpos+8];
@@ -661,19 +673,20 @@ int fsp_readdir_native(FSP_DIR *dir,FSP_RDENTRY *entry, FSP_RDENTRY **result)
 
        /* skip file date and file size */
        dir->dirpos += 9;
-       /* read file name */
-       entry->name[255] = '\0';
-       strncpy(entry->name,(char *)( dir->data + dir->dirpos ),255);
-       /* check for ASCIIZ encoded filename */
-       if (memchr(dir->data + dir->dirpos,0,dir->datasize - dir->dirpos) != NULL)
+       /* read file name (bounded by the directory buffer, not the block) */
        {
-            namelen = strlen( (char *) dir->data+dir->dirpos);
-       }
-       else
-       {
-            /* \0 terminator not found at end of filename */
-            *result = NULL;
-            return 0;
+           size_t avail = dir->datasize - dir->dirpos;
+           void *nul = memchr(dir->data + dir->dirpos, 0, avail);
+           if (nul == NULL)
+           {
+                /* \0 terminator not found at end of filename */
+                *result = NULL;
+                return 0;
+           }
+           namelen = (char*)nul - (char*)(dir->data + dir->dirpos);
+           if (namelen > 255) namelen = 255;
+           memcpy(entry->name, dir->data + dir->dirpos, namelen);
+           entry->name[namelen] = '\0';
        }
        /* skip over file name */
        dir->dirpos += namelen +1;
@@ -836,6 +849,12 @@ size_t fsp_fread(void *dest,size_t size,size_t count,FSP_FILE *file)
             if(file->in.cmd == FSP_CC_ERR)
             {
                 errno = EIO;
+                file->err=1;
+                return done/size;
+            }
+            if(file->in.len > FSP_SPACE)
+            {
+                errno = EMSGSIZE;
                 file->err=1;
                 return done/size;
             }
@@ -1165,6 +1184,8 @@ int fsp_getpro(FSP_SESSION *s,const char *directory,unsigned char *result)
        return -1;
    }
 
+   if(in.len == 0) { errno = EIO; return -1; }
+   if(in.len > FSP_SPACE - 1) in.len = FSP_SPACE - 1;
    if(result)
       *result=in.buf[in.len];
    errno = 0;
@@ -1191,6 +1212,11 @@ int fsp_stat(FSP_SESSION *s,const char *path,struct stat *sb)
        return -1;
    }
    /* parse results */
+   if(in.len < 9)
+   {
+       errno = EIO;
+       return -1;
+   }
    ftype=in.buf[8];
    if(ftype == 0)
    {
