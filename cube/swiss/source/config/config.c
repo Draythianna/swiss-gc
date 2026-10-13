@@ -16,6 +16,7 @@
 #include "cubeboot.h"
 #include "settings.h"
 #include "bba.h"
+#include "gui/capture.h"
 
 // This is an example Swiss settings entry (sits at the top of global.ini)
 //!!Swiss Settings Start!!
@@ -60,6 +61,7 @@
 
 // Tries to init the current config device
 bool config_set_device() {
+	Capture_Stop();	// may test and (re)mount the config device
 	// Set the current config device to whatever the current configDeviceId is
 	DEVICEHANDLER_INTERFACE *configDevice = getDeviceByUniqueId(swissSettings.configDeviceId);
 	devices[DEVICE_CONFIG] = NULL;
@@ -90,6 +92,7 @@ bool config_set_device() {
 }
 
 void config_unset_device() {
+	Capture_Stop();
 	if(devices[DEVICE_CONFIG] != devices[DEVICE_CUR]) {
 		devices[DEVICE_CONFIG]->deinit(devices[DEVICE_CONFIG]->initial);
 	}
@@ -204,6 +207,7 @@ int config_update_global(bool checkConfigDevice) {
 	fprintf(fp, "ShowHiddenFiles=%s\r\n", swissSettings.showHiddenFiles ? "Yes":"No");
 	fprintf(fp, "UISounds=%s\r\n", swissSettings.uiSounds ? "Yes":"No");
 	fprintf(fp, "UIOverscan=%i\r\n", swissSettings.uiOverscan);
+	fprintf(fp, "GamesView=%s\r\n", gamesViewStr[swissSettings.gamesView]);
 	fprintf(fp, "RecentListLevel=%s\r\n", recentListLevelStr[swissSettings.recentListLevel]);
 	fprintf(fp, "GameCube Intro=%s\r\n", swissSettings.cubebootIntro ? "Yes":"No");
 	fprintf(fp, "GameCube Intro Color=%s\r\n", cubebootColorStr[swissSettings.cubebootIntroColor]);
@@ -634,6 +638,14 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 				}
 				else if(!strcmp("UIOverscan", name)) {
 					swissSettings.uiOverscan = MIN(MAX(atoi(value), 0), 10);
+				}
+				else if(!strcmp("GamesView", name)) {
+					for(int i = 0; i < GAMES_VIEW_MAX; i++) {
+						if(!strcmp(gamesViewStr[i], value)) {
+							swissSettings.gamesView = i;
+							break;
+						}
+					}
 				}
 				else if(!strcmp("RecentListLevel", name)) {
 					for(int i = 0; i < 3; i++) {
@@ -1073,6 +1085,14 @@ void config_parse_global(char *configData) {
 				}
 				else if(!strcmp("UIOverscan", name)) {
 					swissSettings.uiOverscan = MIN(MAX(atoi(value), 0), 10);
+				}
+				else if(!strcmp("GamesView", name)) {
+					for(int i = 0; i < GAMES_VIEW_MAX; i++) {
+						if(!strcmp(gamesViewStr[i], value)) {
+							swissSettings.gamesView = i;
+							break;
+						}
+					}
 				}
 				else if(!strcmp("RecentListLevel", name)) {
 					for(int i = 0; i < 3; i++) {

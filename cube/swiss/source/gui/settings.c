@@ -20,6 +20,7 @@
 #include "sram.h"
 #include "rt4k.h"
 #include "cubeboot.h"
+#include "capture.h"
 
 #define page_x_ofs_key (30)
 #define page_x_ofs_val (410)
@@ -56,6 +57,7 @@ char *sramVideoStr[] = {"NTSC", "PAL", "PAL-M"};
 char *igrTypeStr[] = {"Disabled", "Reboot", "Apploader"};
 char *aveCompatStr[] = {"AVE N-DOL", "AVE P-DOL", "CMPV-DOL", "GCDigital", "GCVideo", "AVE-RVL"};
 char *fileBrowserTypeStr[] = {"Standard", "Fullwidth", "Carousel"};
+char *gamesViewStr[] = {"Jewel Case", "Cover Flow"};
 char *bs2BootStr[] = {"No", "Yes", "Sound 1", "Sound 2"};
 char *recentListLevelStr[] = {"Off", "Lazy", "On"};
 
@@ -100,7 +102,8 @@ static char *tooltips_interface[PAGE_INTERFACE_MAX+1] = {
 	[SET_HIDE_UNK] = "Hide unknown file types:\n\nDisabled - Show all files (default)\nEnabled - Hide unknown file types from being displayed\n\nKnown file types are:\n GameCube Executables (.bin/.dol/.elf)\n Disc images (.gcm/.iso/.nkit.iso/.tgc)\n MP3 Music (.mp3)\n WASP/WKF Flash files (.fzn)\n GameCube Memory Card files (.gci/.gcs/.sav)\n GameCube Executables with parameters appended (.dol+cli)",
 	[SET_FLATTEN_DIR] = "Flatten directory:\n\nFlattens a directory structure matching a glob pattern.",
 	[SET_UI_SOUNDS] = "Menu Sounds:\n\nPlays short sound effects when moving around and selecting\nitems in the menus.",
-	[SET_UI_OVERSCAN] = "Menu Overscan:\n\nShrinks the menus towards the centre of the screen so nothing\nis cut off at the edges of TVs that overscan.\n\n0% uses the full picture."
+	[SET_UI_OVERSCAN] = "Menu Overscan:\n\nShrinks the menus towards the centre of the screen so nothing\nis cut off at the edges of TVs that overscan.\n\n0% uses the full picture.",
+	[SET_GAMES_VIEW] = "Games View:\n\nJewel Case - One clear CD jewel case at a time, the disc spinning\ninside. Disc art is read from swiss/discs/<GAMEID>.png on the\ndevice the games are on (GameTDB\'s disc images fit as they are).\n\nCover Flow - Banners turned and stacked to the sides."
 };
 
 static char *tooltips_network[PAGE_NETWORK_MAX+1] = {
@@ -315,6 +318,7 @@ uiDrawObj_t* settings_draw_page(int page_num, int option, ConfigEntry *gameConfi
 		drawSettingEntryBoolean(page, &page_y_ofs, "Menu Sounds:", swissSettings.uiSounds, option == SET_UI_SOUNDS, true);
 		sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscan);
 		drawSettingEntryString(page, &page_y_ofs, "Menu Overscan:", uiOverscanStr, option == SET_UI_OVERSCAN, true);
+		drawSettingEntryString(page, &page_y_ofs, "Games View:", gamesViewStr[swissSettings.gamesView], option == SET_GAMES_VIEW, true);
 	}
 	else if(page_num == PAGE_NETWORK) {
 		int settings_per_page = 10;
@@ -684,6 +688,9 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 			case SET_UI_OVERSCAN:
 				swissSettings.uiOverscan = MIN(MAX(swissSettings.uiOverscan + direction, 0), 10);
 			break;
+			case SET_GAMES_VIEW:
+				swissSettings.gamesView = (swissSettings.gamesView + direction + GAMES_VIEW_MAX) % GAMES_VIEW_MAX;
+			break;
 			case SET_HIDE_UNK:
 				swissSettings.hideUnknownFileTypes ^= 1;
 			break;
@@ -691,6 +698,7 @@ void settings_toggle(int page, int option, int direction, ConfigEntry *gameConfi
 				swissSettings.autoBoot ^= 1;
 			break;
 			case SET_AUTOLOAD:
+				Capture_Stop();
 				select_device(DEVICE_DEST);
 				if(devices[DEVICE_DEST] != NULL) {
 					if(devices[DEVICE_DEST] != devices[DEVICE_CUR]) {

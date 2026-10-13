@@ -30,6 +30,7 @@ This fork replaces the flat Swiss interface with a 3D one inspired by the GameCu
 - **Animated dialogs**: messages and progress boxes zoom in from depth, settings and info pages show their page as small spinning cubes, the device picker image flips in.
 - **Menu sounds**: short bell style sound effects generated at startup and mixed straight into the audio interface (no DSP or ARAM use, so booting games is unaffected). Can be turned off with *Menu Sounds* in the Interface settings.
 - **Menu Overscan**: shrinks the menus by 0-10% towards the centre for TVs that cut off the edges of the picture (Interface settings).
+- **Screenshots and recording**: tap L+R+Z+D-Pad Down (or flick the C-Stick down) to save a PNG of the screen to `swiss/screenshots/`; hold the combo for a second (or flick the C-Stick up) to start or stop recording an MJPEG `.avi` (half resolution, 30 fps) to `swiss/recordings/`. This works on every Swiss screen, but not once a game or homebrew has started. Files go to the device being browsed, which has to be writable (SD, IDE, network shares); a small status pill shows the result and the recording time but is left out of the captures themselves. If the device can't keep up, frames are repeated so the video stays in real time; a recording stops on its own at about 1 GB. Whenever Swiss mounts, unmounts or checks a device (switching devices, saving settings, looking for cheats) the recording keeps going: the file is finished and closed so Swiss can safely use the card, frames are held in memory meanwhile (about 9 s worth), and then the same file is reopened and continues without a gap.
 - **GameCube Intro**: optional original boot animation before Swiss via [cubeboot](https://github.com/OffBroadway/cubeboot) (Global settings).
 
 Building: `docker/build.sh dev` produces `cube/swiss/swiss.dol` using the same image as the CI (see `docker/`).
@@ -96,6 +97,9 @@ Note: Specific devices will have specific locations/executable file variants tha
 | L Button                      | Move up a page          |
 | R Button                      | Move down a page        |
 | Start/Pause                   | Access recent list      |
+| L+R+Z+D-Pad Down (tap)        | Save a screenshot       |
+| L+R+Z+D-Pad Down (hold 1s)    | Start/stop recording    |
+| C-Stick down / up             | Screenshot / start/stop recording (not in the Jewel Case games view, where the C-Stick turns the case) |
 
 In the Games cover flow, left/right moves one game, up/down or L/R jumps five and holding the Control Stick scrolls continuously.
 

@@ -5,6 +5,7 @@
 #include <ogc/si_steering.h>
 #include <ogc/system.h>
 #include <stdlib.h>
+#include "input.h"
 
 static u32 resetBits;
 
@@ -84,12 +85,28 @@ s8 __chooseMaxMagnitiude(s8 p0, s8 p1, s8 p2, s8 p3)
 	return res;
 }
 
+// While L and R are held together the menus don't see the capture combo buttons,
+// so finishing L+R+Z+D-Pad Down doesn't also open the file menu or move the cursor
+static u32 heldForMenus(s32 chan)
+{
+	static bool captureLatch[PAD_CHANMAX];
+	const u32 comboButtons = CAPTURE_COMBO_L | CAPTURE_COMBO_R | PAD_TRIGGER_Z | PAD_BUTTON_DOWN;
+	u32 buttons = PAD_ButtonsHeld(chan);
+
+	if ((buttons & CAPTURE_COMBO_L) && (buttons & CAPTURE_COMBO_R))
+		captureLatch[chan] = true;
+	else if (!(buttons & comboButtons))
+		captureLatch[chan] = false;
+
+	return captureLatch[chan] ? buttons & ~comboButtons : buttons;
+}
+
 u32 padsButtonsHeld() {
 	return (
-		PAD_ButtonsHeld(PAD_CHAN0) |
-		PAD_ButtonsHeld(PAD_CHAN1) |
-		PAD_ButtonsHeld(PAD_CHAN2) |
-		PAD_ButtonsHeld(PAD_CHAN3)
+		heldForMenus(PAD_CHAN0) |
+		heldForMenus(PAD_CHAN1) |
+		heldForMenus(PAD_CHAN2) |
+		heldForMenus(PAD_CHAN3)
 	);
 }
 
@@ -108,5 +125,23 @@ s8 padsStickY() {
 		PAD_StickY(PAD_CHAN1),
 		PAD_StickY(PAD_CHAN2),
 		PAD_StickY(PAD_CHAN3)
+	);
+}
+
+s8 padsSubStickX() {
+	return __chooseMaxMagnitiude(
+		PAD_SubStickX(PAD_CHAN0),
+		PAD_SubStickX(PAD_CHAN1),
+		PAD_SubStickX(PAD_CHAN2),
+		PAD_SubStickX(PAD_CHAN3)
+	);
+}
+
+s8 padsSubStickY() {
+	return __chooseMaxMagnitiude(
+		PAD_SubStickY(PAD_CHAN0),
+		PAD_SubStickY(PAD_CHAN1),
+		PAD_SubStickY(PAD_CHAN2),
+		PAD_SubStickY(PAD_CHAN3)
 	);
 }

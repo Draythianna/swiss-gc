@@ -30,6 +30,8 @@
 #include "cheats.h"
 #include "scene3d.h"
 #include "uisound.h"
+#include "jewelcase.h"
+#include "capture.h"
 
 #define GUI_MSGBOX_ALPHA 225
 
@@ -119,11 +121,12 @@ enum VideoEventType
 	EV_SCENE3D,
 	EV_PAGEHEADER,
 	EV_SELECTBAR,
-	EV_COVERFLOW
+	EV_COVERFLOW,
+	EV_JEWELCASE
 };
 
 char * typeStrings[] = {"TexObj", "MsgBox", "Image", "Progress", "SelectableButton", "EmptyBox", "TransparentBox",
-						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "MenuButtons", "Tooltip", "TitleBar", "Scene3D", "PageHeader", "SelectBar", "Coverflow"};
+						"FileBrowserButton", "VertScrollbar", "StyledLabel", "Container", "MenuButtons", "Tooltip", "TitleBar", "Scene3D", "PageHeader", "SelectBar", "Coverflow", "JewelCase"};
 
 typedef struct drawTexObjEvent {
 	GXTexObj *texObj;
@@ -244,6 +247,11 @@ typedef struct drawCoverflowEvent {
 	struct uiDrawObj **cards;
 } drawCoverflowEvent_t;
 
+typedef struct drawJewelCaseEvent {
+	int count;
+	jewel_entry_t *entries;
+} drawJewelCaseEvent_t;
+
 typedef struct uiDrawObjQueue {
 	struct uiDrawObj *event;
 	struct uiDrawObjQueue *next;
@@ -340,6 +348,9 @@ static void clearNestedEvent(uiDrawObj_t *event) {
 				clearNestedEvent(data->cards[i]);
 			}
 			free(data->cards);
+		}
+		else if(event->type == EV_JEWELCASE) {
+			free(((drawJewelCaseEvent_t*)event->data)->entries);
 		}
 		//print_debug("Clear Nested event->data\n");
 		free(event->data);
@@ -1728,6 +1739,28 @@ uiDrawObj_t* DrawCoverflow(file_handle **files, int numFiles, int selected)
 	return event;
 }
 
+// Internal
+static void _DrawJewelCase(uiDrawObj_t *evt) {
+	drawJewelCaseEvent_t *data = (drawJewelCaseEvent_t*)evt->data;
+	JewelCase_Draw(data->entries, data->count);
+}
+
+// External
+// Games as clear CD jewel cases, one at a time (see jewelcase.c)
+uiDrawObj_t* DrawJewelCase(file_handle **files, int numFiles)
+{
+	drawJewelCaseEvent_t *eventData = calloc(1, sizeof(drawJewelCaseEvent_t));
+	eventData->count = numFiles;
+	eventData->entries = calloc(numFiles > 0 ? numFiles : 1, sizeof(jewel_entry_t));
+	for(int i = 0; i < numFiles; i++) {
+		JewelCase_GameId(files[i], eventData->entries[i].id);
+	}
+	uiDrawObj_t *event = calloc(1, sizeof(uiDrawObj_t));
+	event->type = EV_JEWELCASE;
+	event->data = eventData;
+	return event;
+}
+
 uiDrawObj_t* DrawFileCarouselEntry(int x1, int y1, int x2, int y2, const char *message, file_handle *file, int distFromMiddle) {
 	uiDrawObj_t* event = DrawFileBrowserButtonMeta(x1, y1, x2, y2, message, file, B_SELECTED);
 	drawFileBrowserButtonEvent_t *data = (drawFileBrowserButtonEvent_t*)event->data;
@@ -2297,6 +2330,37 @@ static void drawActivateFade(void)
 	if(alpha <= 0.0f) return;
 	GXColor c = (GXColor) {5, 4, 18, (u8)(255.0f * MIN(alpha, 1.0f))};
 	Scene3D_DrawGradientRect(0, 0, 640, 480, c, c);
+}
+
+// Screenshot / recording status, drawn after the frame has been captured so it never shows up in one
+static void drawCaptureOverlay(void)
+{
+	char text[96];
+	bool recording;
+	float alpha;
+	if(!Capture_Overlay(text, sizeof(text), &recording, &alpha)) return;
+	// The activation fade before this leaves the 3D scene's vertex format set up
+	drawInit();
+
+	float scale = 0.5f;
+	int dot = recording ? 14 : 0;
+	int textW = GetTextSizeInPixels(text) * scale;
+	if(textW > 520) {
+		scale *= 520.0f / textW;
+		textW = 520;
+	}
+	int h = 24, w = textW + dot + 24;
+	int x = 616 - w, y = 30;
+	GXColor fill = THEME_PANEL_DARK, border = THEME_BORDER;
+	fill.a *= alpha;
+	border.a *= alpha;
+	_DrawSimpleBox(x, y, w, h, 0, fill, border);
+	if(recording) {
+		float pulse = 0.6f + 0.4f*sinf(Scene3D_Time()*5.0f);
+		GXColor red = (GXColor) {235, 40, 48, (u8)(255.0f * alpha * pulse)};
+		Scene3D_DrawGradientRect(x + 11, y + h/2 - 5, 10, 10, red, red);
+	}
+	drawString(x + 12 + dot, y + h/2, text, scale, ALIGN_LEFT, (GXColor) {255,255,255,(u8)(255.0f * alpha)});
 }
 
 // External
@@ -2954,6 +3018,9 @@ static void videoDrawEvent(uiDrawObj_t *videoEvent) {
 		case EV_COVERFLOW:
 			_DrawCoverflow(videoEvent);
 			break;
+		case EV_JEWELCASE:
+			_DrawJewelCase(videoEvent);
+			break;
 		default:
 			break;
 	}
@@ -3009,6 +3076,7 @@ static void *videoUpdate(void *videoEventQueue) {
 		Scene3D_NewFrame();
 		UI_SetOverscan(1.0f - swissSettings.uiOverscan / 100.0f);
 		UISound_Poll();
+		Capture_Poll();
 		GXRModeObj *vmode = getVideoMode();
 		if(vmode->field_rendering) {
 			GX_SetViewportJitter(0.0f, 0.0f, vmode->fbWidth, vmode->efbHeight, 0.0f, 1.0f, VIDEO_GetNextField());
@@ -3030,7 +3098,18 @@ static void *videoUpdate(void *videoEventQueue) {
 		}
 		u16 width = vmode->fbWidth;
 		u16 height = GX_SetDispCopyYScale(getYScaleFactor(vmode->efbHeight, vmode->xfbHeight));
+		if(Capture_WantsFrame()) {
+			// Grab the frame without the overlay, then copy again once it's drawn on top
+			GX_CopyDisp(xfb[whichfb], GX_FALSE);
+			GX_DrawDone();
+			Capture_Frame(xfb[whichfb], width, height);
+		}
+		drawCaptureOverlay();
+		// the copy only clears depth while depth writes are on: leave none behind
+		// for the 3D views that test against it (the jewel cases)
+		GX_SetZMode(GX_ENABLE, GX_ALWAYS, GX_TRUE);
 		GX_CopyDisp(xfb[whichfb], GX_TRUE);
+		GX_SetZMode(GX_DISABLE, GX_ALWAYS, GX_FALSE);
 		GX_DrawDone();
 
 		LWP_MutexUnlock(_videomutex);
@@ -3094,6 +3173,7 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	init_textures();
 	Scene3D_Init();
 	UISound_Init();
+	Capture_Init();
 	uiDrawObj_t *container = DrawContainer();
 	if(!black) {
 		DrawAddChild(container, DrawScene3D());
@@ -3187,6 +3267,7 @@ void DrawShutdown() {
 	lwp_t thread = video_thread;
 	video_thread = LWP_THREAD_NULL;
 	LWP_JoinThread(thread, NULL);
+	Capture_Shutdown();
 	GX_SetCurrentGXThread();
 	unsetVideoMode();
 }

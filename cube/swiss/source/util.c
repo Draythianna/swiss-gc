@@ -9,6 +9,7 @@
 #include "dvd.h"
 #include "aram/sidestep.h"
 #include "devices/filemeta.h"
+#include "gui/capture.h"
 
 
 /* File name helper functions */
@@ -291,6 +292,7 @@ int find_existing_entry(char *entry, bool load) {
 		print_debug("Device required for entry [%s]\n", entryDevice->deviceName);
 		
 		// Init the device if it isn't one we were about to browse anyway
+		if(devices[DEVICE_CUR] != entryDevice) Capture_Stop();
 		if(devices[DEVICE_CUR] == entryDevice || !entryDevice->init(entryDevice->initial)) {
 			freeFiles();
 			if(devices[DEVICE_CUR] && devices[DEVICE_CUR] != entryDevice) {
