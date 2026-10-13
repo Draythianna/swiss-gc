@@ -54,12 +54,15 @@ DiskHeader *get_gcm_header(file_handle *file) {
 
 char *get_fst(file_handle *file, u32 file_offset, u32 file_size) {
 	char *FST;
-	
+
+	// FSTs are tiny; reject absurd image-declared sizes before allocating.
+	if(file_size < 12 || file_size > 4*1024*1024) return NULL;
+
 	// Alloc and read FST
 	if(file->device == &__device_dvd && file->fileType == IS_DIR) {
 		FST = (char*)memalign(32, file_size);
 		if(!FST) return NULL;
-		
+
 		if(DVD_Read(FST, file_offset, file_size) != file_size) {
 			free(FST);
 			return NULL;
@@ -145,15 +148,17 @@ bool valid_dol_file(file_handle *file, u32 file_offset, u32 file_size) {
 	}
 	DOLHEADER dolhdr;
 	file->device->seekFile(file, file_offset, DEVICE_HANDLER_SEEK_SET);
-	file->device->readFile(file, &dolhdr, DOLHDRLENGTH);
-	
+	if(file->device->readFile(file, &dolhdr, DOLHDRLENGTH) != DOLHDRLENGTH) {
+		return false;
+	}
+
 	int i;
 	for(i = 0; i < MAXTEXTSECTION; i++) {
 		if(dolhdr.textOffset[i]) {
-			if(dolhdr.textOffset[i] % 32 || dolhdr.textOffset[i] < DOLHDRLENGTH || dolhdr.textOffset[i] + dolhdr.textLength[i] > file_size) {
+			if(dolhdr.textOffset[i] % 32 || dolhdr.textOffset[i] < DOLHDRLENGTH || (u64)dolhdr.textOffset[i] + dolhdr.textLength[i] > file_size) {
 				return false;
 			}
-			if(dolhdr.textAddress[i] % 32 || dolhdr.textAddress[i] < 0x80003100 || dolhdr.textAddress[i] + dolhdr.textLength[i] > 0x81200000) {
+			if(dolhdr.textAddress[i] % 32 || dolhdr.textAddress[i] < 0x80003100 || (u64)dolhdr.textAddress[i] + dolhdr.textLength[i] > 0x81200000) {
 				return false;
 			}
 			if(dolhdr.entryPoint >= dolhdr.textAddress[i] && dolhdr.entryPoint < dolhdr.textAddress[i] + dolhdr.textLength[i]) {
@@ -163,16 +168,16 @@ bool valid_dol_file(file_handle *file, u32 file_offset, u32 file_size) {
 	}
 	for(i = 0; i < MAXDATASECTION; i++) {
 		if(dolhdr.dataOffset[i]) {
-			if(dolhdr.dataOffset[i] % 32 || dolhdr.dataOffset[i] < DOLHDRLENGTH || dolhdr.dataOffset[i] + dolhdr.dataLength[i] > file_size) {
+			if(dolhdr.dataOffset[i] % 32 || dolhdr.dataOffset[i] < DOLHDRLENGTH || (u64)dolhdr.dataOffset[i] + dolhdr.dataLength[i] > file_size) {
 				return false;
 			}
-			if(dolhdr.dataAddress[i] % 32 || dolhdr.dataAddress[i] < 0x80003100 || dolhdr.dataAddress[i] + dolhdr.dataLength[i] > 0x81200000) {
+			if(dolhdr.dataAddress[i] % 32 || dolhdr.dataAddress[i] < 0x80003100 || (u64)dolhdr.dataAddress[i] + dolhdr.dataLength[i] > 0x81200000) {
 				return false;
 			}
 		}
 	}
 	if(dolhdr.bssLength) {
-		if(dolhdr.bssAddress % 32 || dolhdr.bssAddress < 0x80003100 || dolhdr.bssAddress + dolhdr.bssLength > 0x81200000) {
+		if(dolhdr.bssAddress % 32 || dolhdr.bssAddress < 0x80003100 || (u64)dolhdr.bssAddress + dolhdr.bssLength > 0x81200000) {
 			return false;
 		}
 	}
@@ -183,27 +188,46 @@ u32 calc_elf_segments_size(file_handle *file, u32 file_offset, u32 *file_size) {
 	u32 size = 0;
 	
 	Elf32_Ehdr *ehdr = calloc(1, sizeof(Elf32_Ehdr));
+	if(!ehdr) return size;
 	file->device->seekFile(file, file_offset, DEVICE_HANDLER_SEEK_SET);
-	file->device->readFile(file, ehdr, sizeof(Elf32_Ehdr));
+	if(file->device->readFile(file, ehdr, sizeof(Elf32_Ehdr)) != sizeof(Elf32_Ehdr)) {
+		free(ehdr);
+		return size;
+	}
 	if(!valid_elf_image(ehdr)) {
 		free(ehdr);
 		return size;
 	}
-	
+
+	// Validate the program-header table against the file before reading it.
+	if(ehdr->e_phnum == 0 || ehdr->e_phnum > 64 ||
+			(u64)ehdr->e_phoff + (u64)ehdr->e_phnum * sizeof(Elf32_Phdr) > file->size) {
+		free(ehdr);
+		return size;
+	}
+
 	Elf32_Phdr *phdr = calloc(ehdr->e_phnum, sizeof(Elf32_Phdr));
+	if(!phdr) {
+		free(ehdr);
+		return size;
+	}
 	file->device->seekFile(file, file_offset + ehdr->e_phoff, DEVICE_HANDLER_SEEK_SET);
-	file->device->readFile(file, phdr, ehdr->e_phnum * sizeof(Elf32_Phdr));
-	
+	if(file->device->readFile(file, phdr, ehdr->e_phnum * sizeof(Elf32_Phdr)) != ehdr->e_phnum * sizeof(Elf32_Phdr)) {
+		free(ehdr);
+		free(phdr);
+		return size;
+	}
+
 	*file_size = ehdr->e_phoff + ehdr->e_phnum * sizeof(Elf32_Phdr);
-	
+
 	int i;
 	for(i = 0; i < ehdr->e_phnum; i++) {
 		if(phdr[i].p_type == PT_LOAD) {
-			phdr[i].p_filesz = (phdr[i].p_filesz + 31) & ~31;
-			if(phdr[i].p_offset + phdr[i].p_filesz > *file_size) {
-				*file_size = phdr[i].p_offset + phdr[i].p_filesz;
+			u32 pfilesz = (phdr[i].p_filesz + 31) & ~31;
+			if((u64)phdr[i].p_offset + pfilesz > *file_size) {
+				*file_size = phdr[i].p_offset + pfilesz;
 			}
-			size += phdr[i].p_filesz;
+			size += pfilesz;
 		}
 	}
 	free(ehdr);
@@ -310,8 +334,13 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 	if(!FST) return 0;
 
 	u32 entries=*(unsigned int*)&FST[8];
+	if(entries == 0 || (u64)entries*FST_ENTRY_SIZE > diskHeader->FSTSize) {
+		free(FST);
+		free(diskHeader);
+		return numFiles;
+	}
 	u32 string_table_offset=FST_ENTRY_SIZE*entries;
-		
+
 	int i;
 	// go through every entry
 	for (i=1;i<entries;i++)
@@ -322,8 +351,10 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 		{
 			u32 file_offset,size = 0;
 			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF);
+			if((u64)string_table_offset+filename_offset >= diskHeader->FSTSize) continue;
+			u32 nameAvail = diskHeader->FSTSize - string_table_offset - filename_offset;
 			memset(&filename[0],0,256);
-			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255);
+			memcpy(&filename[0],&FST[string_table_offset+filename_offset],nameAvail < 255 ? nameAvail : 255);
 			memcpy(&file_offset,&FST[offset+4],4);
 			memcpy(&size,&FST[offset+8],4);
 			if(endsWith(filename,".dol")) {
@@ -474,8 +505,12 @@ int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, cha
 
 	// Adjust TGC FST offsets
 	adjust_tgc_fst(FST, tgc_base, tgcHeader.userStart, tgcHeader.gcmUserStart, tgcHeader.fstLength);
-	
+
 	u32 entries=*(unsigned int*)&FST[8];
+	if(entries == 0 || (u64)entries*FST_ENTRY_SIZE > tgcHeader.fstLength) {
+		free(FST);
+		return numFiles;
+	}
 	u32 string_table_offset=FST_ENTRY_SIZE*entries;
 		
 	int i;
@@ -488,8 +523,10 @@ int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, cha
 		{
 			u32 file_offset,size = 0;
 			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF);
+			if((u64)string_table_offset+filename_offset >= tgcHeader.fstLength) continue;
+			u32 nameAvail = tgcHeader.fstLength - string_table_offset - filename_offset;
 			memset(&filename[0],0,256);
-			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255);
+			memcpy(&filename[0],&FST[string_table_offset+filename_offset],nameAvail < 255 ? nameAvail : 255);
 			memcpy(&file_offset,&FST[offset+4],4);
 			memcpy(&size,&FST[offset+8],4);
 			if(endsWith(filename,".dol")) {
@@ -762,16 +799,19 @@ fail:
 	return num_patched;
 }
 
-u64 calc_fst_entries_size(char *FST) {
-	
+u64 calc_fst_entries_size(char *FST, u32 fst_size) {
+
 	u64 totalSize = 0LL;
 	u32 entries=*(unsigned int*)&FST[8];
+	if((u64)entries*12 > fst_size) {
+		entries = fst_size/12;
+	}
 	int i;
 	for (i=1;i<entries;i++)	// go through every entry
-	{ 
+	{
 		if(!FST[i*0x0c]) {	// Skip directories
 			totalSize += *(u32*)&FST[(i*0x0c)+8];
-		} 
+		}
 	}
 	return totalSize;
 }
@@ -791,11 +831,12 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 	if(!FST) return -1;
 	
 	// Get the space taken up by this disc
-	if(usedSpace) *usedSpace = calc_fst_entries_size(FST);
+	if(usedSpace) *usedSpace = calc_fst_entries_size(FST, diskHeader->FSTSize);
 	
 	if(isRoot) {
 		// Add the disc itself as a "file"
 		*dir = calloc(numFiles, sizeof(file_handle));
+		if(!*dir) { free(FST); free(diskHeader); return -1; }
 		concatf_path((*dir)[idx].name, file->name, "%.64s [%.6s].gcm", stripInvalidChars(diskHeader->GameName), diskHeader);
 		(*dir)[idx].fileBase = 0;
 		(*dir)[idx].offset = 0;
@@ -807,20 +848,43 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 	}
 	
 	u32 entries=*(unsigned int*)&FST[8];
+	if(entries == 0 || (u64)entries*FST_ENTRY_SIZE > diskHeader->FSTSize) {
+		free(FST);
+		free(diskHeader);
+		return -1;
+	}
 	u32 string_table_offset=FST_ENTRY_SIZE*entries;
-		
+
 	int i;
 	// Go through the FST and find our DIR (or ROOT)
-	int parent_dir_offset = (u32)file->fileBase;
-	int dir_end_offset = isRoot ? *(u32*)&FST[8] : 0;
-	
-	u32 filename_offset=((*(u32*)&FST[parent_dir_offset*0x0C]) & 0x00FFFFFF); 
-	concat_path(filename, file->name, &FST[string_table_offset+filename_offset]);
+	u32 parent_dir_offset = (u32)file->fileBase;
+	if(parent_dir_offset >= entries) {
+		free(FST);
+		free(diskHeader);
+		return -1;
+	}
+	int dir_end_offset = isRoot ? entries : 0;
+
+	u32 filename_offset=((*(u32*)&FST[parent_dir_offset*0x0C]) & 0x00FFFFFF);
+	// Bound the FST-side name; it may not be NUL-terminated within the buffer.
+	{
+		char nameBuf[256];
+		u32 nameAvail = 0;
+		if((u64)string_table_offset+filename_offset < diskHeader->FSTSize)
+			nameAvail = diskHeader->FSTSize - string_table_offset - filename_offset;
+		if(nameAvail > 255) nameAvail = 255;
+		memset(nameBuf,0,sizeof(nameBuf));
+		memcpy(nameBuf,&FST[string_table_offset+filename_offset],nameAvail);
+		concat_path(filename, file->name, nameBuf);
+	}
 	dir_end_offset = *(u32*)&FST[(parent_dir_offset*0x0C) + 8];
-	
+	if(dir_end_offset > entries || dir_end_offset < parent_dir_offset)
+		dir_end_offset = entries;
+
 	if(!isRoot) {
 		// Add a special ".." dir which will take us back up a dir
 		*dir = calloc(numFiles, sizeof(file_handle));
+		if(!*dir) { free(FST); free(diskHeader); return -1; }
 		concat_path((*dir)[idx].name, file->name, "..");
 		(*dir)[idx].fileBase = *(u32*)&FST[(parent_dir_offset*0x0C)+4];
 		(*dir)[idx].offset = 0;
@@ -835,21 +899,33 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 	// Traverse the FST now adding all the files which come under our DIR
 	for (i=parent_dir_offset;i<dir_end_offset;i++) {
 		if(i==0) continue;
-		
+
 		u32 offset=i*0x0c;
 		u32 file_offset,size = 0;
-		u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF); 
-		concat_path(filename, file->name, &FST[string_table_offset+filename_offset]);
+		u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF);
+		{
+			char nameBuf[256];
+			u32 nameAvail = 0;
+			if((u64)string_table_offset+filename_offset < diskHeader->FSTSize)
+				nameAvail = diskHeader->FSTSize - string_table_offset - filename_offset;
+			if(nameAvail > 255) nameAvail = 255;
+			memset(nameBuf,0,sizeof(nameBuf));
+			memcpy(nameBuf,&FST[string_table_offset+filename_offset],nameAvail);
+			concat_path(filename, file->name, nameBuf);
+		}
 		memcpy(&file_offset,&FST[offset+4],4);
 		memcpy(&size,&FST[offset+8],4);
-		
+		// A directory's end index must stay within this directory.
+		if(size > dir_end_offset) size = dir_end_offset;
 		// Is this a sub dir of our dir?
 		if(FST[offset]) {
 			if(file_offset == parent_dir_offset) {
 				//print_debug("Adding: [%03i]%s:%s offset %08X length %08X\n",i,!FST[offset] ? "File" : "Dir",filename,file_offset,size);
 				if(numFiles == idx) {
 					numFiles *= 2;
-					*dir = reallocarray(*dir, numFiles, sizeof(file_handle));
+					file_handle *newDir = reallocarray(*dir, numFiles, sizeof(file_handle));
+					if(!newDir) { free(*dir); *dir = NULL; free(FST); free(diskHeader); return -1; }
+					*dir = newDir;
 				}
 				memset(&(*dir)[idx], 0, sizeof(file_handle));
 				strcpy((*dir)[idx].name, filename);
@@ -869,7 +945,9 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 			//print_debug("Adding: [%03i]%s:%s offset %08X length %08X\n",i,!FST[offset] ? "File" : "Dir",filename,file_offset,size);
 			if(numFiles == idx) {
 				numFiles *= 2;
-				*dir = reallocarray(*dir, numFiles, sizeof(file_handle));
+				file_handle *newDir = reallocarray(*dir, numFiles, sizeof(file_handle));
+				if(!newDir) { free(*dir); *dir = NULL; free(FST); free(diskHeader); return -1; }
+				*dir = newDir;
 			}
 			memset(&(*dir)[idx], 0, sizeof(file_handle));
 			strcpy((*dir)[idx].name, filename);
@@ -884,7 +962,8 @@ int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace) {
 	}
 	if(numFiles != idx) {
 		numFiles = idx;
-		*dir = reallocarray(*dir, numFiles, sizeof(file_handle));
+		file_handle *newDir = reallocarray(*dir, numFiles, sizeof(file_handle));
+		if(newDir) *dir = newDir;
 	}
 	
 	free(FST);
