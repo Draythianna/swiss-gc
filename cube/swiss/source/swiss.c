@@ -1605,7 +1605,9 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 
 	char fileName[PATHNAME_MAX];
 	memset(fileName, 0, PATHNAME_MAX);
-	strncpy(fileName, file->name, strrchr(file->name, '.') - file->name);
+	char *dot = strrchr(file->name, '.');
+	if(!dot || dot == file->name) return;
+	strncpy(fileName, file->name, dot - file->name);
 	print_debug("DOL file name without extension [%s]\n", fileName);
 
 	// .iso disc image file

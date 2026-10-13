@@ -47,13 +47,10 @@ int valid_elf_image(void *addr)
 		return 0;
 	}
 
-/*
 	if (ehdr->e_machine != EM_PPC) {
-		//printf ("## Not a PowerPC elf image at address 0x%08lx\n",
-			addr);
+		// Only execute PowerPC images on this platform.
 		return 0;
 	}
-*/
 	return 1;
 }
 
