@@ -101,7 +101,7 @@ bool rt4k_init(void)
 		rt4k.sin.sin_addr.s_addr == addr.sin_addr.s_addr)
 		goto same;
 
-	rt4k_deinit();
+	if(rt4k.fp) rt4k_deinit();
 	rt4k.sd = net_socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
 	if (rt4k.sd == INVALID_SOCKET)
@@ -137,6 +137,6 @@ void rt4k_load_profile(int profile)
 
 void rt4k_deinit(void)
 {
-	fclose(rt4k.fp);
+	if (rt4k.fp) fclose(rt4k.fp);
 	rt4k.fp = NULL;
 }

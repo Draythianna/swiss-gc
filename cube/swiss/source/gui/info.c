@@ -84,7 +84,7 @@ const char* getDeviceInfoString(u32 location) {
 	}
 	else if(device == &__device_gcloader) {
 		if(gcloaderVersionStr != NULL) {
-			sprintf(topStr, "%s HW%i (%s)", device->hwName, gcloaderHwVersion, gcloaderVersionStr);
+			if(strlen(gcloaderVersionStr) > 128) gcloaderVersionStr[128] = 0; snprintf(topStr, sizeof(topStr), "%s HW%i (%s)", device->hwName, gcloaderHwVersion, gcloaderVersionStr);
 		}
 		else {
 			strcpy(topStr, device->hwName);
@@ -100,7 +100,7 @@ const char* getDeviceInfoString(u32 location) {
 		}
 	}
 	else if(device == &__device_wkf) {
-		sprintf(topStr, "%s (%s)", device->hwName, wkfGetSerial());
+		snprintf(topStr, sizeof(topStr), "%s (%s)", device->hwName, wkfGetSerial());
 	}
 	else {
 		strcpy(topStr, getHwNameByLocation(location));

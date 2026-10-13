@@ -71,8 +71,11 @@ void unlockFile(file_handle *file)
 
 	_CPU_ISR_Disable(level);
 
-	if (--file->lockCount == 0)
-		LWP_ThreadBroadcast(queue);
+	// Only the holding thread may unlock, and never below zero.
+	if (file->lockCount != 0 && file->thread == LWP_GetSelf()) {
+		if (--file->lockCount == 0)
+			LWP_ThreadBroadcast(queue);
+	}
 
 	_CPU_ISR_Restore(level);
 }

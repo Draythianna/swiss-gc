@@ -63,8 +63,12 @@ s32 deviceHandler_WODE_readDir(file_handle* ffile, file_handle** dir, u32 type){
 	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Reading WODE"));
 	
 	//we don't care about partitions, just files!
-	while(!GetTotalISOs()) {
-		usleep(20000);
+	{
+		int tries = 100;
+		while(!GetTotalISOs() && --tries) {
+			usleep(20000);
+		}
+		if(!tries) { return -1; }
 	}
    
 	u32 numPartitions = 0, numIsoInPartition = 0, i,j, num_entries = 1;

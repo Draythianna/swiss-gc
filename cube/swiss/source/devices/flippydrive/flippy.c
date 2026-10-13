@@ -131,6 +131,7 @@ static void open_callback(flippyfile *file)
 {
 	switch (file->result) {
 		case FLIPPY_RESULT_OK:
+			if (file->handle == 0 || file->handle > 63) break;
 			handles |= (1LL << (file->handle - 1));
 			break;
 	}
@@ -540,6 +541,10 @@ flippyresult flippy_close(flippyfileinfo *info)
 	dvdcmdblk block;
 	flippyfile *file = &info->file;
 
+	if (file->handle == 0 || file->handle > 63) {
+		file->result = FLIPPY_RESULT_INVALID_OBJECT;
+		return file->result;
+	}
 	if (!(handles & (1LL << (file->handle - 1)))) {
 		file->result = FLIPPY_RESULT_INVALID_OBJECT;
 		return file->result;
@@ -566,6 +571,10 @@ flippyresult flippy_closedir(flippydirinfo *info)
 	dvdcmdblk block;
 	flippyfile *dir = &info->dir;
 
+	if (dir->handle == 0 || dir->handle > 63) {
+		dir->result = FLIPPY_RESULT_INVALID_OBJECT;
+		return dir->result;
+	}
 	if (!(handles & (1LL << (dir->handle - 1)))) {
 		dir->result = FLIPPY_RESULT_INVALID_OBJECT;
 		return dir->result;

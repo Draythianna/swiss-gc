@@ -125,7 +125,7 @@ s32 usbgecko_open_dir(char *filename) {
 	// Try get a reply
 	usb_recvbuffer_safe(1, get_buffer(), 1);
 	if(get_buffer()[0] == ANS_READY) {
-		usb_sendbuffer_safe(1, filename, 4096);
+		usb_sendbuffer_safe(1, filename, strlen(filename)+1);
 		return 1;
 	}
 	return 0;

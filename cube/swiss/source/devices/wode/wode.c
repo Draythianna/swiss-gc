@@ -97,6 +97,7 @@ unsigned long GetNumPartitions( void )
 {
 	dvdcmdblk cmdblk;
 	if(DVD_ReadAbs (&cmdblk, dvdbuffer, 0x20 , WODE_GET_NUM_PARTS) <= 0){
+		return 0;
 	}
 	return *(unsigned long*)&dvdbuffer[0]; 
 }
@@ -105,6 +106,7 @@ unsigned long GetNumISOsInSelectedPartition( int partition )
 {
 	dvdcmdblk cmdblk;
 	if(DVD_ReadAbs (&cmdblk, dvdbuffer, 0x20 , WODE_GET_NUM_ISOS(partition)) <= 0){
+		return 0;
 	}
 	return *(unsigned long*)&dvdbuffer[0]; 
 }
@@ -113,6 +115,7 @@ int GetPartitionInfo(unsigned long partition_idx, PartitionInfo_t* PartitionInfo
 {
 	dvdcmdblk cmdblk;
 	if(DVD_ReadAbs (&cmdblk, dvdbuffer, 0x80 , WODE_GET_PART(partition_idx)) <= 0){
+		return 0;
 	}
 	memcpy(PartitionInfo->name,dvdbuffer,64);
 	PartitionInfo->NumISOs 			= *((unsigned long*)&dvdbuffer[64]);
@@ -125,6 +128,7 @@ int GetISOInfo(unsigned long partition_idx, unsigned long iso_idx, ISOInfo_t * I
 {
 	dvdcmdblk cmdblk;
 	if(DVD_ReadAbs (&cmdblk, dvdbuffer, 0x80 , WODE_GET_ISO(partition_idx,iso_idx)) <= 0){
+		return 0;
 	}
 	memcpy(ISOInfo->name,dvdbuffer,64);
 	ISOInfo->iso_type 		= *((unsigned long*)&dvdbuffer[64]);
