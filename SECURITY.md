@@ -302,3 +302,54 @@ Trigger: opening a burned DVD-R in the DVD browser. **Fix:** clamp `nl` to `size
 - Document that wiiload/httpd/SMB expose the console on the LAN and that SMB credentials are stored/transmitted weakly.
 
 *Verification statement:* every Critical finding (S-01…S-10) and most Highs were re-confirmed by direct reads of the quoted lines during consolidation; remaining items are included with code citations from the audit passes. As with any audit, absence of a finding is not proof of absence — the DVDs/ISO9660, FTP LIST, FST and TGC parsers in particular warrant fuzzing after fixes.
+
+---
+
+# Remediation
+
+All in-scope findings were fixed as individual commits on top of the audit tree (one commit per finding ID or tight cluster, verified by `docker/build.sh dev` builds):
+
+| Finding | Fix commit |
+|---|---|
+| S-01 FST strcpy stack smash | `657ce648` |
+| S-02 + S-08 filesToPatch/TGC bounds | `738e6473` |
+| S-03 FST staging address validation | `6d693575` |
+| S-04 legacy config stack overflow | `fd0d4385` |
+| S-05 FTP command buffers | `ed6f480d` |
+| S-06 SYS SRAM/ARAM clamps | `1d740326` |
+| S-07 ISO9660 parser | `6e6b73c5` |
+| S-09 swissserver host overflows | `fcaef45a` |
+| S-10 **libtinysmb (dependency)** | not fixable in-repo — the SMB wire parser lives in libogc2; requires upstream libtinysmb bound-checking pass. Consider warning users not to expose SMB shares on untrusted networks. |
+| S-11/S-12 wiiload | `8ee13392` |
+| S-13 FSP client | `872e5b61` |
+| S-14 httpd | `511d3d4a` |
+| S-15 TPL backdrop | `af1bdc47` (in-repo pre-validator) |
+| S-16 cheat engine cap | `2e760b0a` |
+| S-17 size+1 allocations | `435f4dc4` |
+| S-18 .dcp parser | `01f9f8c9` |
+| S-19 config hygiene | `d956cb1d` |
+| S-20 ATA IDENTIFY/timeouts | `e5356d06` |
+| S-21 ATA DISC_INTERFACE init | no repo change — the code matches libogc2 `master` (12-field struct); the fault only surfaces when mis-building against the older packaged libogc2 (r2476). Build with `docker/build.sh` / current libogc2. |
+| S-22 flash safety (WKF/Qoob/KunaiGC/GCLoader + .fzn read) | `77b234da` |
+| S-23 ELF/DOL loaders | `0019a673` |
+| S-24 patcher | `8d46a289` |
+| S-25 memory-card import | `a1a3a276` |
+| S-26 multigame table | `7d2fe655` |
+| S-27 WODE/flippy/usbgecko/rt4k/info | `430c2f71` (`b99431` corrected msg) |
+| S-28 copy/verify allocs | `45d2db9b` |
+| S-29 copy/delete/dest-dir robustness | `45d2db9b` |
+| S-30 banner metadata | `ee8e631e` (validation) + `45d2db9b` (consumers) |
+| S-31 MP3 player | `397e271a` |
+| S-32 pngdec/jewelcase | `af1bdc47` |
+| S-33 sspd resource exhaustion | `9fa6861a` |
+| S-34 sspd symlink jail | `9fa6861a` |
+| S-35 dol2gci/jewelcase-preview | `c32d96d9` |
+| L-01…L-09 FTP robustness | `ed6f480d` + `04963b29` |
+| L-13 filelock, L-14 card accounting | `430c2f71`, `a1a3a276` |
+| L-17/L-20 gcm read-checks/u64 math | `03f68950` + `03c36cc7` |
+| L-18 NPDP print | `7d2fe655` |
+| plus SMB glue size/name guards | `aee39e9a` |
+| plus FAT/diskio guards | `d533d01a` |
+| plus ELF machine check + DOL extension guard | `5294759a` |
+
+Not fixed (deliberate): SMB NTLMv1/plaintext credential storage (documented; inherent to the protocol), wiiload's TCP/USB handler mutual exclusion (needs LAN attacker + simultaneous USB host;Low), httpd short-send/RST niceties (protocol robustness, not memory safety).
