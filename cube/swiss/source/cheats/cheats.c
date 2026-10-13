@@ -101,18 +101,24 @@ void parseCheats(char *filecontents) {
 	while( line != NULL ) {
 		//print_debug("Line [%s]\n", line);
 		if(isCheatCode(line)) {		// The line looks like a valid code
-			_cheats.cheat = reallocarray(_cheats.cheat, numCheats+1, sizeof(CheatEntry));
+			CheatEntry *newCheats = reallocarray(_cheats.cheat, numCheats+1, sizeof(CheatEntry));
+			if(!newCheats) break;
+			_cheats.cheat = newCheats;
 			curCheat = &_cheats.cheat[numCheats];
 			memset(curCheat, 0, sizeof(CheatEntry));
-			
+
 			if(prevLine != NULL) {
 				curCheat->name = strdup(prevLine);
 				//print_debug("Cheat Name: [%s]\n", prevLine);
+			} else {
+				curCheat->name = strdup("");
 			}
 			int numCodes = 0, unsupported = 0;
 			if(isValidCode(line)) {
 				// Add this valid code as the first code for this cheat
-				curCheat->codes = reallocarray(curCheat->codes, numCodes+1, sizeof(*curCheat->codes));
+				u32 (*newCodes)[2] = reallocarray(curCheat->codes, numCodes+1, sizeof(*curCheat->codes));
+				if(!newCodes) break;
+				curCheat->codes = newCodes;
 				sscanf(line, "%x %x", &curCheat->codes[numCodes][0], &curCheat->codes[numCodes][1]);
 				numCodes++;
 			}
@@ -121,14 +127,16 @@ void parseCheats(char *filecontents) {
 				unsupported = 1;
 				numCodes++;
 			}
-			
+
 			line = strtok_r( NULL, "\r\n", &linectx);
 			// Keep going until we're out of codes for this cheat
 			while( line != NULL ) {
 				if(isCheatCode(line)) {
 					if(isValidCode(line)) {
 						// Add this valid code
-						curCheat->codes = reallocarray(curCheat->codes, numCodes+1, sizeof(*curCheat->codes));
+						u32 (*newCodes)[2] = reallocarray(curCheat->codes, numCodes+1, sizeof(*curCheat->codes));
+						if(!newCodes) break;
+						curCheat->codes = newCodes;
 						sscanf(line, "%x %x", &curCheat->codes[numCodes][0], &curCheat->codes[numCodes][1]);
 						numCodes++;
 					}
@@ -181,6 +189,17 @@ void kenobi_install_engine() {
 	CHEATS_START_PAUSED = isDebug ? CHEATS_TRUE : CHEATS_FALSE;
 	memset(CHEATS_LOCATION(size), 0, kenobi_get_maxsize());
 	print_debug("Copying %i bytes of cheats to %08X\n", getEnabledCheatsSize(),(u32)CHEATS_LOCATION(size));
+	if(getEnabledCheatsSize() + 12 > kenobi_get_maxsize()) {
+		// A crafted .chtsel can enable more codes than fit past the UI's check.
+		print_debug("Too many cheats enabled, not installing codes\n");
+		u32 *cheatArea = (u32*)CHEATS_LOCATION(size);
+		cheatArea[0] = 0x00D0C0DE;
+		cheatArea[1] = 0x00D0C0DE;
+		cheatArea[2] = 0xFF000000;
+		DCFlushRange((void*)CHEATS_ENGINE, WIIRD_ENGINE_SPACE);
+		ICInvalidateRange((void*)CHEATS_ENGINE, WIIRD_ENGINE_SPACE);
+		return;
+	}
 	u32 *cheatsLocation = (u32*)CHEATS_LOCATION(size);
 	cheatsLocation[0] = 0x00D0C0DE;
 	cheatsLocation[1] = 0x00D0C0DE;
@@ -282,7 +301,7 @@ int findCheats(bool silent) {
 		return 0;
 	}
 	print_debug("Cheats file found with size %i\n", cheatsFile->size);
-	char *cheats_buffer = calloc(1, cheatsFile->size + 1);
+	char *cheats_buffer = (cheatsFile->size <= 8*1024*1024) ? calloc(1, cheatsFile->size + 1) : NULL;
 	if(cheats_buffer) {
 		devices[DEVICE_CHEATS]->seekFile(cheatsFile, 0, DEVICE_HANDLER_SEEK_SET);
 		devices[DEVICE_CHEATS]->readFile(cheatsFile, cheats_buffer, cheatsFile->size);
@@ -339,7 +358,7 @@ void loadCheatsSelection() {
 				CheatEntry *cheat = &_cheats.cheat[i];
 				u8 enabled = 0;
 				devices[DEVICE_CHEATS]->readFile(cheatsSelFile, &enabled, 1);
-				cheat->enabled = enabled;
+				cheat->enabled = enabled ? 1 : 0;
 			}
 		}
 		else {
