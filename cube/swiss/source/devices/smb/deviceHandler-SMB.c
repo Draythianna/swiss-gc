@@ -107,7 +107,8 @@ s32 deviceHandler_SMB_readDir(file_handle* ffile, file_handle** dir, u32 type){
 	do {
 		errno = 0;
 		entry = readdir(dp);
-		if(!entry || !strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+		if(!entry || !strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")
+				|| strchr(entry->d_name, '/') || strchr(entry->d_name, '\\')) {
 			continue;
 		}
 		// Do we want this one?
@@ -115,7 +116,9 @@ s32 deviceHandler_SMB_readDir(file_handle* ffile, file_handle** dir, u32 type){
 			// Make sure we have room for this one
 			if(num_entries == i) {
 				num_entries *= 2;
-				*dir = reallocarray(*dir, num_entries, sizeof(file_handle));
+				file_handle *newDir = reallocarray(*dir, num_entries, sizeof(file_handle));
+				if(!newDir) { free(*dir); *dir = NULL; closedir(dp); return -1; }
+				*dir = newDir;
 			}
 			memset(&(*dir)[i], 0, sizeof(file_handle));
 			if(concat_path((*dir)[i].name, ffile->name, entry->d_name) < PATHNAME_MAX
@@ -145,6 +148,7 @@ s32 deviceHandler_SMB_statFile(file_handle* file) {
 	struct stat fstat;
 	int ret = stat(file->name, &fstat);
 	if(ret == 0) {
+		if(fstat.st_size > UINT32_MAX) return -1;
 		file->fileBase = fstat.st_ino;
 		file->size     = fstat.st_size;
 		file->fileType = S_ISDIR(fstat.st_mode) ? IS_DIR : IS_FILE;
@@ -156,6 +160,7 @@ s64 deviceHandler_SMB_seekFile(file_handle* file, s64 where, u32 type){
 	if(type == DEVICE_HANDLER_SEEK_SET) file->offset = where;
 	else if(type == DEVICE_HANDLER_SEEK_CUR) file->offset = file->offset + where;
 	else if(type == DEVICE_HANDLER_SEEK_END) file->offset = file->size + where;
+	if((s64)file->offset < 0) file->offset = 0;
 	return file->offset;
 }
 
@@ -165,7 +170,9 @@ s32 deviceHandler_SMB_readFile(file_handle* file, void* buffer, u32 length){
 		if(!file->fp) return -1;
 		setbuf(file->fp, NULL);
 		fseek(file->fp, 0, SEEK_END);
-		file->size = ftell(file->fp);
+		off_t fsize = ftello(file->fp);
+		if(fsize < 0 || fsize > UINT32_MAX) { fclose(file->fp); file->fp = NULL; return -1; }
+		file->size = (u32)fsize;
 		file->fileType = IS_FILE;
 	}
 	
