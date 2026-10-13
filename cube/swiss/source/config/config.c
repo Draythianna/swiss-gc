@@ -437,12 +437,15 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 				}
 				else if(!strcmp("Name", name)) {
 					strncpy(configEntries[configEntriesCount].game_name, value, 64);
+					configEntries[configEntriesCount].game_name[64] = 0;
 				}
 				else if(!strcmp("Comment", name)) {
 					strncpy(configEntries[configEntriesCount].comment, value, 128);
+					configEntries[configEntriesCount].comment[128] = 0;
 				}
 				else if(!strcmp("Status", name)) {
 					strncpy(configEntries[configEntriesCount].status, value, 32);
+					configEntries[configEntriesCount].status[32] = 0;
 				}
 				else if(!strcmp("Force Video Mode", name)) {
 					int *ptr = !defaultPassed ? &swissSettings.gameVMode : &configEntries[configEntriesCount].gameVMode;
@@ -1073,7 +1076,8 @@ void config_parse_global(char *configData) {
 					strlcpy(swissSettings.bbaLocalIp, value, sizeof(swissSettings.bbaLocalIp));
 				}
 				else if(!strcmp("BBANetmask", name)) {
-					swissSettings.bbaNetmask = atoi(value);
+					int nm = atoi(value);
+					swissSettings.bbaNetmask = (nm < 0) ? 0 : (nm > 32 ? 32 : nm);
 				}
 				else if(!strcmp("BBAGateway", name)) {
 					strlcpy(swissSettings.bbaGateway, value, sizeof(swissSettings.bbaGateway));
@@ -1189,12 +1193,15 @@ void config_parse_game(char *configData, ConfigEntry *entry) {
 				//print_debug("Name [%s] Value [%s]\n", name, value);
 				if(!strcmp("Name", name)) {
 					strncpy(entry->game_name, value, 64);
+					entry->game_name[64] = 0;
 				}
 				else if(!strcmp("Comment", name)) {
 					strncpy(entry->comment, value, 128);
+					entry->comment[128] = 0;
 				}
 				else if(!strcmp("Status", name)) {
 					strncpy(entry->status, value, 32);
+					entry->status[32] = 0;
 				}
 				else if(!strcmp("Game Language", name)) {
 					for(int i = 0; i < 9; i++) {
@@ -1338,7 +1345,7 @@ void config_find(ConfigEntry *entry) {
 	if(!config_set_device()) {
 		return;
 	}
-	print_debug("config_find: Looking for config file with ID %s\n",entry->game_id);
+	print_debug("config_find: Looking for config file with ID %.4s\n",entry->game_id);
 	// See if we have an actual config file for this game
 	concatf_path(txtbuffer, SWISS_GAME_SETTINGS_DIR, "%.4s.ini", entry->game_id);
 	char* configEntry = config_file_read(txtbuffer);
