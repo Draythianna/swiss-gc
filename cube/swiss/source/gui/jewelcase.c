@@ -1433,13 +1433,13 @@ void JewelCase_Enter(int count, int selected)
 	if (!jc.started || jc.count != count) {
 		jc.started = true;
 		jc.count = count;
-		jc.cur = selected;
+		jc.cur = selected >= 0 ? (selected < count ? selected : 0) : 0;
 		jc.tr = false;
 		jc.queue = -1;
 		jc.phase = PH_REST;
 		jc.phaseAt = jc.t;
 		jc.clock = 0;
-		jc.railPos = selected;
+		jc.railPos = (selected >= 0 && selected < count) ? selected : 0;
 		jc.dockActive = jc.dockPrev = -1;
 	}
 	if (jc.launching) {

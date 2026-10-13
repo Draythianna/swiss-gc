@@ -3187,6 +3187,74 @@ void DrawInit(GXRModeObj *videoMode, bool black) {
 	LWP_CreateThread(&video_thread, videoUpdate, videoEventQueue, video_thread_stack, VIDEO_STACK_SIZE, VIDEO_PRIORITY);
 }
 
+static u32 tplTextureSize(u32 width, u32 height, u32 fmt)
+{
+	switch(fmt) {
+		case 0x0:  // GX_TF_I4
+		case 0x8:  // GX_TF_CI4
+		case 0xE:  // GX_TF_CMPR
+			return ((width+7)>>3)*((height+7)>>3)*32;
+		case 0x1:  // GX_TF_I8
+		case 0x2:  // GX_TF_IA4
+		case 0x9:  // GX_TF_CI8
+			return ((width+7)>>3)*((height+7)>>2)*32;
+		case 0x3:  // GX_TF_IA8
+		case 0xA:  // GX_TF_CI14
+		case 0x4:  // GX_TF_RGB565
+		case 0x5:  // GX_TF_RGB5A3
+			return ((width+3)>>2)*((height+3)>>2)*32;
+		case 0x6:  // GX_TF_RGBA8
+			return ((width+3)>>2)*((height+3)>>2)*32*2;
+		default:
+			return 0;
+	}
+}
+
+// Validate a TPL container before handing it to libogc's trusting
+// parser (crafted backdrop.tpl could otherwise drive wild mallocs and
+// descriptor-offset reads with attacker-influenced data). S-15.
+static bool tplValidateSafe(file_handle *file)
+{
+	u32 fsize = file->size;
+	if(!fsize || fsize > 4*1024*1024) return false;
+
+	u32 header[4];
+	file->device->seekFile(file, 0, DEVICE_HANDLER_SEEK_SET);
+	if(file->device->readFile(file, header, sizeof(header)) != (s32)sizeof(header)) return false;
+
+	u32 ntex = header[1];  // ntextures
+	if(!ntex || ntex > 16) return false;
+	u32 descs[16*2];       // [imgoff, paloff] per texture
+	if(file->device->readFile(file, descs, ntex*8) != (s32)(ntex*8)) return false;
+
+	for(u32 i = 0; i < ntex; i++) {
+		u32 imgoff = descs[i*2], paloff = descs[i*2+1];
+		if(imgoff) {
+			if((u64)imgoff + 36 > fsize) return false;
+			u8 imghdr[36];
+			if(file->device->seekFile(file, imgoff, DEVICE_HANDLER_SEEK_SET) != imgoff) return false;
+			if(file->device->readFile(file, imghdr, sizeof(imghdr)) != (s32)sizeof(imghdr)) return false;
+			u16 height = *(u16*)&imghdr[0], width = *(u16*)&imghdr[2];
+			u32 fmt = *(u32*)&imghdr[4], dataOff = *(u32*)&imghdr[8];
+			u32 texSize = tplTextureSize(width, height, fmt);
+			if(!width || !height || width > 2048 || height > 2048 || !texSize) return false;
+			if((u64)dataOff + texSize > fsize) return false;
+		}
+		if(paloff) {
+			if((u64)paloff + 12 > fsize) return false;
+			u8 palhdr[12];
+			if(file->device->seekFile(file, paloff, DEVICE_HANDLER_SEEK_SET) != paloff) return false;
+			if(file->device->readFile(file, palhdr, sizeof(palhdr)) != (s32)sizeof(palhdr)) return false;
+			u16 nitems = *(u16*)&palhdr[0];
+			u32 palfmt = *(u32*)&palhdr[4];
+			u32 palDataOff = *(u32*)&palhdr[8];
+			if(!nitems || nitems > 256 || palfmt > 2) return false;
+			if((u64)palDataOff + nitems*2 > fsize) return false;
+		}
+	}
+	return true;
+}
+
 void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device) {
 	file_handle *backdropFile = calloc(1, sizeof(file_handle));
 	concat_path(backdropFile->name, device->initial->name, "swiss/backdrop.tpl");
@@ -3195,6 +3263,11 @@ void DrawLoadBackdrop(DEVICEHANDLER_INTERFACE *device) {
 	s32 id = 0;
 	u32 fmt;
 	u16 width, height;
+	// Screen the TPL before libogc's parser sees it.
+	if(!tplValidateSafe(backdropFile)) {
+		free(backdropFile);
+		return;
+	}
 	if(TPL_OpenTPLFromHandle(&backdropTPL, openFileStream(backdropFile)) >= 0) {
 		time_t curtime;
 		if(time(&curtime) != (time_t)-1) {

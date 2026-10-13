@@ -48,6 +48,7 @@ u8 *PNG_Decode(const u8 *data, u32 size, int *outW, int *outH)
 		if (len > size - pos - 12) break;
 
 		if (!memcmp(tag, "IHDR", 4) && len >= 13) {
+			if (zinit) goto fail;	// duplicate IHDR: refuse rather than leak the old buffers
 			w = be32(chunk);
 			h = be32(chunk + 4);
 			depth = chunk[8];
