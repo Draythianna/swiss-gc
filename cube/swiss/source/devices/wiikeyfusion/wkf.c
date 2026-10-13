@@ -81,23 +81,23 @@ void __wkfSpiUnlockFwPages(u8 pages) {
 int __wkfSpiErasePage(unsigned int addr) {
 	__wkfSpiWriteEnable();
 	__wkfCmdImm(0xDF000000, 0x1C002000 | ((addr>>16)&0xFF), (((addr>>8)&0xFF) << 24) | (((addr)&0xFF)<<16));
-	while(__wkfSpiRdSR () & 1);
+	{ int _r = 5000000; while((__wkfSpiRdSR () & 1) && --_r); if(!_r) print_debug("wkf spi wait timeout\n"); }
 	return 0;
 }
 
 void __wkfSpiAAIFirst(unsigned int addr, u8 byte1, u8 byte2) {
 	__wkfCmdImm(0xDF000000, 0x1F00AD00 | ((addr>>16)&0xFF), (((addr>>8)&0xFF) << 24) | (((addr)&0xFF)<<16) | byte1<<8 | byte2);
-	while(__wkfSpiRdSR () & 1);
+	{ int _r = 5000000; while((__wkfSpiRdSR () & 1) && --_r); if(!_r) print_debug("wkf spi wait timeout\n"); }
 }
 
 void __wkfSpiAAINext(u8 byte1, u8 byte2) {
 	__wkfCmdImm(0xDF000000, 0x1800AD00 | byte1, (byte2 << 24));
-	while(__wkfSpiRdSR () & 1);
+	{ int _r = 5000000; while((__wkfSpiRdSR () & 1) && --_r); if(!_r) print_debug("wkf spi wait timeout\n"); }
 }
 
 void __wkfSpiPP(unsigned int addr, u8 byte1) {
 	__wkfCmdImm(0xDF000000, 0x1E000200 | ((addr>>16)&0xFF), (((addr>>8)&0xFF) << 24) | (((addr)&0xFF)<<16) | byte1<<8);
-	while(__wkfSpiRdSR () & 1);
+	{ int _r = 5000000; while((__wkfSpiRdSR () & 1) && --_r); if(!_r) print_debug("wkf spi wait timeout\n"); }
 }
 
 void __wkfFlashPage(const unsigned char *pageData, unsigned int addr) {
@@ -163,7 +163,14 @@ void wkfWriteFlash(unsigned char *menuImg, unsigned char *firmwareImg) {
 	int perc=0,prevperc=0;
 
 	print_debug("WKF Serial: %s\n", wkfGetSerial());
-	
+
+	// Never send erase/program commands to something that isn't a WKF/WASP.
+	unsigned int spiId = __wkfSpiReadId();
+	if(spiId == 0 || spiId == 0xFFFFFFFF) {
+		print_debug("No recognised WKF flash present, aborting.\n");
+		return;
+	}
+
 	print_debug("Firmware upgrade in progress.\n");
 	print_debug("Please do not power off your GC/Wii.\n");
 	

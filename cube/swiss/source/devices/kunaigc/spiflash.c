@@ -1,5 +1,7 @@
 /* (c) 2016-07-01 Jens Hauke <jens.hauke@4k2.de> */
 #include "spiflash.h"
+#include <ogc/timesupp.h>
+#include <unistd.h>
 
 //#define SPI_DBG
 
@@ -16,9 +18,14 @@ uint8_t spiflash_is_busy(void) {
 }
 
 
-// Wait until not busy
+// Wait until not busy (bounded: a faulted erase must not hang forever;
+// chip erase can legitimately take tens of seconds, so allow ~60 s).
 void spiflash_wait(void) {
-    while (spiflash_is_busy());
+    u64 start = gettime();
+    while (spiflash_is_busy()) {
+        if (ticks_to_millisecs(gettime() - start) > 60000) break;
+        usleep(1000);
+    }
 }
 
 void spiflash_cmd_addr_start(uint8_t cmd, uint32_t addr) {

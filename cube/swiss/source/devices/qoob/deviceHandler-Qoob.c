@@ -85,6 +85,17 @@ char *getQoobExtension(qoobEntryHeader* entryHeader) {
 u32 sizeToBlocks(u32 size) {
 	return (size + QOOB_BLOCK_SIZE - 1) / QOOB_BLOCK_SIZE;
 }
+
+// Sanitise a partition-entry span from on-flash data: 0 or absurd sizes
+// must never hang the directory scan or run past the 2 MiB flash.
+static u32 qoob_entry_span(qoobEntryHeader *h, u32 block) {
+	if(h->size == 0 || h->size > 0x200000 || block + QOOB_BLOCK_SIZE > 0x200000)
+		return QOOB_BLOCK_SIZE;
+	u32 span = sizeToBlocks(h->size) * QOOB_BLOCK_SIZE;
+	if(block + span > 0x200000)
+		span = 0x200000 - block;
+	return span;
+}
 	
 s32 deviceHandler_Qoob_readDir(file_handle* ffile, file_handle** dir, u32 type) {	
 	if(type != -1) return -1;
@@ -104,6 +115,7 @@ s32 deviceHandler_Qoob_readDir(file_handle* ffile, file_handle** dir, u32 type) 
 		__SYS_ReadROM(iplBlock, sizeof(qoobEntryHeader), block);
 		qoobEntryHeader entryHeader;
 		memcpy(&entryHeader, &iplBlock, sizeof(qoobEntryHeader));
+		entryHeader.entry_name[sizeof(entryHeader.entry_name)-1] = 0;
 		
 		switch(entryHeader.entry_type) {
 			case QOOB_FILE_ELF:
@@ -155,14 +167,14 @@ s32 deviceHandler_Qoob_readDir(file_handle* ffile, file_handle** dir, u32 type) 
 				}
 				concat_path((*dir)[i].name, ffile->name, entryName);
 				(*dir)[i].fileBase = block;
-				(*dir)[i].size     = sizeToBlocks(entryHeader.size) * QOOB_BLOCK_SIZE;
+				(*dir)[i].size     = qoob_entry_span(&entryHeader, block);
 				(*dir)[i].fileType = IS_FILE;
 				(*dir)[i].device   = ffile->device;
 				usedSpace += (*dir)[i].size;
 				++i;
 				
 				print_debug("Found [%08X] entry, %08X in size\n", entryHeader.entry_type, entryHeader.size);
-				block += sizeToBlocks(entryHeader.size) * QOOB_BLOCK_SIZE;
+				block += qoob_entry_span(&entryHeader, block);
 				break;
 			}
 			default:
@@ -208,7 +220,7 @@ int erase_sector(int addr)
 	rom_write(0x555, 0x55);
 	rom_write(addr, 0x30);
 	print_debug("\r%08x erase..\n", addr);
-	while (rom_read(addr) != rom_read(addr));
+	{ u32 _r = 100000000; while (rom_read(addr) != rom_read(addr) && --_r); }
 	return 0;
 }
 
@@ -272,7 +284,12 @@ int write_qoob_rom(unsigned char *src, u32 dest, int len)
 	{
 		rom_write(dest, 0xA0);
 		rom_write(dest, *src);
-		while (rom_read(dest) != *src);
+		{ int _r = 2000000;
+		while (rom_read(dest) != *src && --_r) {
+			rom_write(dest, 0xA0);
+			rom_write(dest, *src);
+		}
+		if(!_r) { print_debug("flash program timeout at %08x\\n", dest); return -1; } }
 		++src;
 		++dest;
 		--len;
@@ -299,6 +316,7 @@ s32 deviceHandler_Qoob_writeFile(file_handle* file, const void* buffer, u32 leng
 			__SYS_ReadROM(iplBlock,sizeof(qoobEntryHeader),block);
 			qoobEntryHeader entryHeader;
 			memcpy(&entryHeader, &iplBlock, sizeof(qoobEntryHeader));
+			entryHeader.entry_name[sizeof(entryHeader.entry_name)-1] = 0;
 			print_debug("Checking block at %08X\n", block);
 			switch(entryHeader.entry_type) {
 				case QOOB_FILE_APPL:
@@ -322,7 +340,7 @@ s32 deviceHandler_Qoob_writeFile(file_handle* file, const void* buffer, u32 leng
 						emptyBlockSize = 0;
 					}
 					print_debug("Found [%08X] entry, %08X in size\n", entryHeader.entry_type, entryHeader.size);
-					block += sizeToBlocks(entryHeader.size) * QOOB_BLOCK_SIZE;
+					block += qoob_entry_span(&entryHeader, block);
 					break;
 				case 0xFFFFFFFF:
 					print_debug("empty block found at %08X [%08X]\n", block, entryHeader.entry_type);
@@ -385,6 +403,9 @@ s32 deviceHandler_Qoob_writeFile(file_handle* file, const void* buffer, u32 leng
 }
 
 s32 deviceHandler_Qoob_deleteFile(file_handle* file) {
+	// Only erase within the 2 MiB flash, and never a zero length.
+	if(file->size == 0 || file->fileBase >= 0x200000 || (u64)file->fileBase + file->size > 0x200000)
+		return -1;
 	erase_qoob_rom(file->fileBase, file->size);
 	return 0;
 }

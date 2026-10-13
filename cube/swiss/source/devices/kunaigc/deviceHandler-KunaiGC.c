@@ -163,7 +163,13 @@ s32 deviceHandler_KunaiGC_writeFile(file_handle* file, const void* buffer, u32 l
 
 bool deviceHandler_KunaiGC_test() {
     u32 jedec_id = kunai_get_jedecID();
-    cfg.block_count = (((1 << ((jedec_id >> 8) & 0xFF)) - KUNAI_OFFS) / cfg.block_size);
+    // The capacity is encoded as 2^cap bytes; clone chips or EXI glitches can
+    // report garbage that would underflow the block count and make littlefs
+    // erase/program past the real flash (into the loader/recovery region).
+    u32 cap = (jedec_id >> 8) & 0xFF;
+    if (cap < 18 || cap > 24)
+        return false;
+    cfg.block_count = (((u32)(1UL << cap) - KUNAI_OFFS) / cfg.block_size);
 
     return (jedec_id != 0) && (jedec_id != 0xFFFFFFFF);
 }

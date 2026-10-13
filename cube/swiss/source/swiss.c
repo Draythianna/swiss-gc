@@ -2586,13 +2586,32 @@ void load_file()
 			}
 			uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Reading Flash File\205"));
 			u8 *flash = (u8*)memalign(32,0x1D0000);
-			devices[DEVICE_CUR]->seekFile(&curFile,0,DEVICE_HANDLER_SEEK_SET);
-			devices[DEVICE_CUR]->readFile(&curFile,flash,0x1D0000);
+			if(flash) {
+				devices[DEVICE_CUR]->seekFile(&curFile,0,DEVICE_HANDLER_SEEK_SET);
+				if(devices[DEVICE_CUR]->readFile(&curFile,flash,0x1D0000) != 0x1D0000) {
+					free(flash); flash = NULL;
+				}
+			}
 			// Try to read a .fw file too.
 			file_handle fwFile;
 			memset(&fwFile, 0, sizeof(file_handle));
 			snprintf(&fwFile.name[0], PATHNAME_MAX, "%s.fw", &curFile.name[0]);
+			if(!flash) {
+				DrawDispose(msgBox);
+				msgBox = DrawPublish(DrawMessageBox(D_WARN, "Failed to read flash file!"));
+				sleep(2);
+				DrawDispose(msgBox);
+				return;
+			}
 			u8 *firmware = (u8*)memalign(32, 0x3000);
+			if(!firmware) {
+				free(flash);
+				DrawDispose(msgBox);
+				msgBox = DrawPublish(DrawMessageBox(D_WARN, "Insufficient memory"));
+				sleep(2);
+				DrawDispose(msgBox);
+				return;
+			}
 			DrawDispose(msgBox);
 			if(devices[DEVICE_CUR] == &__device_dvd || devices[DEVICE_CUR]->readFile(&fwFile,firmware,0x3000) != 0x3000) {
 				free(firmware); firmware = NULL;

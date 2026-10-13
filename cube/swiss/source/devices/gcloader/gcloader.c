@@ -56,7 +56,7 @@ char *gcloaderGetVersion(u8 hwVersion) {
 	gcloader[7] = 3; // DMA | START
 	DCInvalidateRange(buffer, len);
 
-	while(gcloader[7] & 1);
+	{ int _r = 2000000; while((gcloader[7] & 1) && --_r); }
 
 	buffer[len-1] = '\0';
 	return buffer;
