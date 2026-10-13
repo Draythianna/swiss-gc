@@ -2451,7 +2451,7 @@ static uiDrawObj_t* drawParameterForArgsSelector(Parameter *param, int x, int y,
 
 	uiDrawObj_t* container = DrawContainer();
 	char *name = &param->arg.name[0];
-	char *selValue = &param->values[param->currentValueIdx].name[0];
+	char *selValue = (param->num_values > 0) ? &param->values[param->currentValueIdx].name[0] : "";
 	
 	int chkWidth = 32, nameWidth = 300, gapWidth = 13, paramWidth = 120;
 	// [32px 10px 250px 10px 5px 80px 5px]
@@ -2512,7 +2512,8 @@ void DrawArgsSelector(const char *fileName) {
 		while (!(padsButtonsHeld() & (BUTTON_RIGHT|BUTTON_LEFT|BUTTON_UP|BUTTON_DOWN|BUTTON_START|BUTTON_A)))
 			{ VIDEO_WaitVSync (); }
 		u32 btns = padsButtonsHeld();
-		if((btns & (BUTTON_RIGHT|BUTTON_LEFT)) && params->parameters[param_selection].enable) {
+		if((btns & (BUTTON_RIGHT|BUTTON_LEFT)) && params->parameters[param_selection].enable
+				&& params->parameters[param_selection].num_values > 0) {
 			int curValIdx = params->parameters[param_selection].currentValueIdx;
 			int maxValIdx = params->parameters[param_selection].num_values;
 			curValIdx = btns & BUTTON_LEFT ? 

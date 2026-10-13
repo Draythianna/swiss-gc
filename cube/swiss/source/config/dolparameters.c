@@ -94,21 +94,31 @@ void parseParameters(char *filecontents) {
 			}
 			
 			if(!strcasecmp("Name", key)) {
-				_parameters.parameters = reallocarray(_parameters.parameters, numParameters+1, sizeof(Parameter));
+				if(value == NULL) continue;
+				Parameter *newParams = reallocarray(_parameters.parameters, numParameters+1, sizeof(Parameter));
+				if(!newParams) break;
+				_parameters.parameters = newParams;
 				curParam = &_parameters.parameters[numParameters];
 				memset(curParam, 0, sizeof(Parameter));
 				//print_debug("Current Param %08X\n", curParam);
 				parseParameterValue(value, &curParam->arg);
-				numParameters++;
+				if(curParam->arg.value && curParam->arg.name)
+					numParameters++;
 			}
 			else if(!strcasecmp("Values", key)) {
+				if(value == NULL || curParam == NULL) continue;
 				char *valuePairStart = strchr(value, '{');
 				int numValues = 0;
 				while(valuePairStart != NULL) {
-					curParam->values = reallocarray(curParam->values, numValues+1, sizeof(ParameterValue));
+					ParameterValue *newValues = reallocarray(curParam->values, numValues+1, sizeof(ParameterValue));
+					if(!newValues) break;
+					curParam->values = newValues;
+					memset(&curParam->values[numValues], 0, sizeof(ParameterValue));
 					parseParameterValue(valuePairStart, &curParam->values[numValues]);
 					valuePairStart = strchr(valuePairStart+1, '{');
-					numValues++;
+					// Only keep tuples that actually parsed.
+					if(curParam->values[numValues].value && curParam->values[numValues].name)
+						numValues++;
 				}
 				curParam->num_values = numValues;
 			}
@@ -130,9 +140,10 @@ void populateArgz(char **argz, size_t *argz_len) {
 	print_debug("There are %i parameters\n", params->num_params);
 	for(i = 0; i < params->num_params; i++) {
 		Parameter *param = &params->parameters[i];
-		if(param->enable) {
+		if(param->enable && param->arg.value && param->num_values > 0) {
 			ParameterValue *arg = &param->arg;
 			ParameterValue *val = &param->values[param->currentValueIdx];
+			if(!val->value) continue;
 			//print_debug("Arg: (%s) [%s] is enabled with value (%s) [%s]\n",
 			//	arg->value, arg->name, val->value, val->name);
 			if(arg->value[0] && val->value[0])
