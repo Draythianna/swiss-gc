@@ -192,7 +192,7 @@ void populate_game_meta(file_handle *f, u32 bannerOffset, u32 bannerSize, u16 fo
 	f->meta->bannerSize = BNR_PIXELDATA_LEN;
 	f->meta->banner = memalign(32,BNR_PIXELDATA_LEN);
 	memcpy(f->meta->banner,blankbanner.pixelData,BNR_PIXELDATA_LEN);
-	if(bannerOffset == -1 || bannerOffset + bannerSize > f->size) {
+	if(bannerOffset == -1 || (u64)bannerOffset + bannerSize > f->size) {
 		print_debug("Banner not found or out of range\n");
 	}
 	else if(bannerSize) {
@@ -201,7 +201,19 @@ void populate_game_meta(file_handle *f, u32 bannerOffset, u32 bannerSize, u16 fo
 			print_debug("Banner read failed %i from offset %08X\n", bannerSize, bannerOffset);
 		}
 		else {
-			if(!memcmp(banner->magic, "BNR1", 4)) {
+			u16 descIdx = SYS_LANG_ENGLISH;
+			u32 needSize;
+			if(!memcmp(banner->magic, "BNR2", 4)) {
+				if(in_range(swissSettings.sramLanguage, SYS_LANG_ENGLISH, SYS_LANG_DUTCH))
+					descIdx = swissSettings.sramLanguage;
+				needSize = offsetof(BNR, desc) + (u32)(descIdx + 1) * sizeof(BNRDesc);
+			} else {
+				needSize = offsetof(BNR, desc) + sizeof(BNRDesc);
+			}
+			if(bannerSize < needSize) {
+				print_debug("Banner too small (%u < %u)\n", bannerSize, needSize);
+			}
+			else if(!memcmp(banner->magic, "BNR1", 4)) {
 				f->meta->bannerSum = fletcher16(banner, bannerSize);
 				memcpy(f->meta->banner, banner->pixelData, f->meta->bannerSize);
 				iconvBannerDesc(&f->meta->bannerDesc, &banner->desc[SYS_LANG_ENGLISH], fontEncode);
@@ -209,21 +221,24 @@ void populate_game_meta(file_handle *f, u32 bannerOffset, u32 bannerSize, u16 fo
 			else if(!memcmp(banner->magic, "BNR2", 4)) {
 				f->meta->bannerSum = fletcher16(banner, bannerSize);
 				memcpy(f->meta->banner, banner->pixelData, f->meta->bannerSize);
-				if(in_range(swissSettings.sramLanguage, SYS_LANG_ENGLISH, SYS_LANG_DUTCH))
-					iconvBannerDesc(&f->meta->bannerDesc, &banner->desc[swissSettings.sramLanguage], fontEncode);
-				else
-					iconvBannerDesc(&f->meta->bannerDesc, &banner->desc[SYS_LANG_ENGLISH], fontEncode);
+				iconvBannerDesc(&f->meta->bannerDesc, &banner->desc[descIdx], fontEncode);
 			}
 			fixBannerDesc(f->meta->bannerDesc.gameName, BNR_SHORT_TEXT_LEN);
+			// These fields are displayed as C strings; guarantee termination.
+			f->meta->bannerDesc.gameName[BNR_SHORT_TEXT_LEN-1] = 0;
 			if(strnlen(f->meta->bannerDesc.gameName, BNR_SHORT_TEXT_LEN))
 				f->meta->displayName = f->meta->bannerDesc.gameName;
 			fixBannerDesc(f->meta->bannerDesc.company, BNR_SHORT_TEXT_LEN);
+			f->meta->bannerDesc.company[BNR_SHORT_TEXT_LEN-1] = 0;
 			fixBannerDesc(f->meta->bannerDesc.fullGameName, BNR_FULL_TEXT_LEN);
+			f->meta->bannerDesc.fullGameName[BNR_FULL_TEXT_LEN-1] = 0;
 			if(strnlen(f->meta->bannerDesc.fullGameName, BNR_FULL_TEXT_LEN))
 				f->meta->displayName = f->meta->bannerDesc.fullGameName;
 			fixBannerDesc(f->meta->bannerDesc.fullCompany, BNR_FULL_TEXT_LEN);
+			f->meta->bannerDesc.fullCompany[BNR_FULL_TEXT_LEN-1] = 0;
 			// Some banners only have empty spaces as padding until they hit a new line in the IPL
 			fixBannerDesc(f->meta->bannerDesc.description, BNR_DESC_LEN);
+			f->meta->bannerDesc.description[BNR_DESC_LEN-1] = 0;
 			// ...and some banners have no CR/LF and we'd like a sane wrap point
 			if(strlen(f->meta->bannerDesc.description) > 50) {
 				char *desc_ptr = f->meta->bannerDesc.description;
