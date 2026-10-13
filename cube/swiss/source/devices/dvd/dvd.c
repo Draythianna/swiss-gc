@@ -513,6 +513,9 @@ void xeno_disable() {
 int read_direntry(unsigned char* direntry)
 {
        int nrb = *direntry++;
+       // Hard caps: one entry per record, 128-byte name field, sane record size.
+       if (files >= MAXIMUM_ENTRIES_PER_DIR) return -1;
+       if (nrb < 34) return -1;
        ++direntry;
 
        int sector;
@@ -521,7 +524,7 @@ int read_direntry(unsigned char* direntry)
        sector = (*direntry++) << 24;
        sector |= (*direntry++) << 16;
        sector |= (*direntry++) << 8;
-       sector |= (*direntry++);        
+       sector |= (*direntry++);
 
        int size;
 
@@ -538,6 +541,14 @@ int read_direntry(unsigned char* direntry)
        ++direntry; ++direntry; direntry += 4;
 
        int nl = *direntry++;
+
+       // Record must be self-consistent and the name must fit
+       // (leave room for a possible trailing '/' and NUL).
+       if (nl < 1 || 33 + nl > nrb) return -1;
+       if (is_unicode) {
+               if (nl/2 > 126) nl = 252;    // clamp pairs so nl/2 <= 126
+       }
+       else if (nl > 126) nl = 126;
 
        char* name = DVDToc->file[files].name;
 
@@ -573,7 +584,7 @@ int read_direntry(unsigned char* direntry)
 
                if (!(flags & 2))
                {
-                       if (name[nl - 2] == ';')
+                       if (nl >= 2 && name[nl - 2] == ';')
                                name[nl - 2] = 0;
 
                        int i = nl;
@@ -610,12 +621,24 @@ void read_directory(int sector, int len)
   memset(DVDToc,0,sizeof(file_entries));
   while (len > 0)
   {
-    ptr += read_direntry(sector_buffer + ptr);
+    int nrb = sector_buffer[ptr];
+    // Directory records never span sectors; skip padding/corrupt records.
+    if (nrb < 1 || ptr + nrb > 2048)
+    {
+      len -= 2048;
+      sector++;
+      if (len > 0) read_sector(sector_buffer, 1, sector);
+      ptr = 0;
+      continue;
+    }
+    int used = read_direntry(sector_buffer + ptr);
+    if (used <= 0) break;
+    ptr += used;
     if (ptr >= 2048 || !sector_buffer[ptr])
     {
       len -= 2048;
       sector++;
-      read_sector(sector_buffer, 1, sector);
+      if (len > 0) read_sector(sector_buffer, 1, sector);
       ptr = 0;
     }
   }
