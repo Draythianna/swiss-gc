@@ -1640,7 +1640,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	// we found something, use parameters (.cli)
 	if(devices[DEVICE_CUR]->readFile(cliArgFile, NULL, 0) == 0 && cliArgFile->size) {
 		print_debug("Argument file found [%s]\n", cliArgFile->name);
-		char *cli_buffer = calloc(1, cliArgFile->size + 1);
+		char *cli_buffer = (cliArgFile->size <= 8*1024*1024) ? calloc(1, cliArgFile->size + 1) : NULL;
 		if(cli_buffer) {
 			devices[DEVICE_CUR]->seekFile(cliArgFile, 0, DEVICE_HANDLER_SEEK_SET);
 			devices[DEVICE_CUR]->readFile(cliArgFile, cli_buffer, cliArgFile->size);
@@ -1666,7 +1666,7 @@ void boot_dol(file_handle* file, int argc, char *argv[])
 	// we found something, parse and display parameters for selection (.dcp)
 	if(devices[DEVICE_CUR]->readFile(dcpArgFile, NULL, 0) == 0 && dcpArgFile->size) {
 		print_debug("Argument file found [%s]\n", dcpArgFile->name);
-		char *dcp_buffer = calloc(1, dcpArgFile->size + 1);
+		char *dcp_buffer = (dcpArgFile->size <= 8*1024*1024) ? calloc(1, dcpArgFile->size + 1) : NULL;
 		if(dcp_buffer) {
 			devices[DEVICE_CUR]->seekFile(dcpArgFile, 0, DEVICE_HANDLER_SEEK_SET);
 			devices[DEVICE_CUR]->readFile(dcpArgFile, dcp_buffer, dcpArgFile->size);
