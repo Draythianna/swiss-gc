@@ -86,7 +86,10 @@ impl Server {
             match self.ssp.handle(pkt, from, &mut self.files, Instant::now()) {
                 ssp::Action::Reply(reply) => send(&self.sock, &reply, from),
                 ssp::Action::Stream(stream) => {
-                    self.streams.insert(from, stream);
+                    // Cap concurrent streams; each holds a buffered read.
+                    if self.streams.contains_key(&from) || self.streams.len() < 32 {
+                        self.streams.insert(from, stream);
+                    }
                 }
                 ssp::Action::Ignore => {}
             }

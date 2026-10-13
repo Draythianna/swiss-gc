@@ -29,6 +29,11 @@ pub const CC_STAT: u8 = 0x4D;
 pub const CC_RENAME: u8 = 0x4E;
 
 pub const HSIZE: usize = 12;
+/// Largest buffered upload (FW images are a few MiB).
+const MAX_UPLOAD_SIZE: usize = 256 * 1024 * 1024;
+/// Maximum concurrent upload sessions (one per source address).
+const MAX_UPLOAD_SESSIONS: usize = 16;
+
 /// Payload size fsplib expects when a request doesn't name one.
 pub const SPACE: usize = 1024;
 
@@ -267,11 +272,17 @@ impl State {
                 if self.read_only {
                     return Err("Server is read-only");
                 }
+                if !self.uploads.contains_key(&from) && self.uploads.len() >= MAX_UPLOAD_SESSIONS {
+                    return Err("Too many uploads in progress");
+                }
                 let upload = self.uploads.entry(from).or_default();
                 if req.pos == 0 {
                     upload.clear();
                 }
                 let end = req.pos as usize + req.data.len();
+                if end > MAX_UPLOAD_SIZE {
+                    return Err("Upload too large");
+                }
                 if upload.len() < end {
                     upload.resize(end, 0);
                 }

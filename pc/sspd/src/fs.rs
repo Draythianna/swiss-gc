@@ -16,7 +16,8 @@ pub fn split_path(bytes: &[u8]) -> (String, Option<String>) {
     }
 }
 
-/// Resolves a client path under `root`, refusing anything that escapes it.
+/// Resolves a client path under `root`, refusing anything that escapes it,
+/// including through symlinks inside the served tree.
 pub fn resolve(root: &Path, path: &str) -> Option<PathBuf> {
     let mut out = root.to_path_buf();
     for component in Path::new(path).components() {
@@ -24,6 +25,35 @@ pub fn resolve(root: &Path, path: &str) -> Option<PathBuf> {
             Component::Normal(part) => out.push(part),
             Component::RootDir | Component::CurDir => {}
             Component::ParentDir | Component::Prefix(_) => return None,
+        }
+    }
+    let canon_root = root.canonicalize().ok()?;
+    match out.canonicalize() {
+        Ok(canon) => {
+            if !canon.starts_with(&canon_root) {
+                return None;
+            }
+        }
+        // Not yet existing targets (write/rename): walk up to the nearest
+        // existing ancestor and require it to be inside the root; reject
+        // symlink final components explicitly.
+        Err(_) => {
+            if out.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+                return None;
+            }
+            let mut anc = out.parent();
+            while let Some(p) = anc {
+                match p.canonicalize() {
+                    Ok(cp) => {
+                        if !cp.starts_with(&canon_root) {
+                            return None;
+                        }
+                        return Some(out);
+                    }
+                    Err(_) => anc = p.parent(),
+                }
+            }
+            return None;
         }
     }
     Some(out)
@@ -100,10 +130,21 @@ mod tests {
 
     #[test]
     fn resolve_stays_under_root() {
-        let root = Path::new("/srv/gc");
-        assert_eq!(resolve(root, "/games/a.iso"), Some(PathBuf::from("/srv/gc/games/a.iso")));
-        assert_eq!(resolve(root, ""), Some(PathBuf::from("/srv/gc")));
-        assert_eq!(resolve(root, "./swiss/patches"), Some(PathBuf::from("/srv/gc/swiss/patches")));
-        assert_eq!(resolve(root, "/games/../../etc/passwd"), None);
+        let root = std::env::temp_dir().join("sspd_resolve_test");
+        std::fs::create_dir_all(root.join("games")).unwrap();
+        std::fs::write(root.join("games").join("a.iso"), b"").unwrap();
+        assert_eq!(resolve(&root, "/games/a.iso"), Some(root.join("games/a.iso")));
+        assert_eq!(resolve(&root, ""), Some(root.clone()));
+        assert_eq!(resolve(&root, "/games/../../etc/passwd"), None);
+
+        // A symlink inside the tree must not let requests escape the root.
+        #[cfg(unix)]
+        {
+            let link = root.join("games").join("link");
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink("/etc", &link).unwrap();
+            assert_eq!(resolve(&root, "/games/link/passwd"), None);
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
