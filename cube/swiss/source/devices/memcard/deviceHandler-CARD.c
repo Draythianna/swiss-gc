@@ -113,17 +113,20 @@ s32 deviceHandler_CARD_readDir(file_handle* ffile, file_handle** dir, u32 type){
  	
 	/* Convert the Memory Card "file" data to fileBrowser_files */
 	*dir = calloc(num_entries, sizeof(file_handle));
+	if(!*dir) return -1;
 	concat_path((*dir)[0].name, ffile->name, "..");
 	(*dir)[0].fileType = IS_SPECIAL;
 	(*dir)[0].device   = ffile->device;
 
-	int usedSpace = 0;
+	u32 usedSpace = 0;
 	ret = CARD_FindFirst (slot, memcard_dir, true);
 	while (CARD_ERROR_NOFILE != ret) {
 		// Make sure we have room for this one
 		if(num_entries == i) {
 			num_entries *= 2;
-			*dir = reallocarray(*dir, num_entries, sizeof(file_handle));
+			file_handle *newDir = reallocarray(*dir, num_entries, sizeof(file_handle));
+			if(!newDir) break;
+			*dir = newDir;
 		}
 		memset(&(*dir)[i], 0, sizeof(file_handle));
 		concatf_path((*dir)[i].name, ffile->name, "%.*s", CARD_FILENAMELEN, memcard_dir->filename);
@@ -138,9 +141,10 @@ s32 deviceHandler_CARD_readDir(file_handle* ffile, file_handle** dir, u32 type){
 	}
 	if(num_entries != i) {
 		num_entries = i;
-		*dir = reallocarray(*dir, num_entries, sizeof(file_handle));
+		file_handle *newDir = reallocarray(*dir, num_entries, sizeof(file_handle));
+		if(newDir) *dir = newDir;
 	}
-	
+
 	initial_CARD_info[slot].freeSpace = initial_CARD_info[slot].totalSpace - usedSpace;
 	free(memcard_dir);
 	return num_entries;
@@ -252,11 +256,13 @@ s32 deviceHandler_CARD_readFile(file_handle* file, void* buffer, u32 length){
 
 	u8 *read_buffer = (u8*)memalign(32,card_sectorsize[slot]);
 	if(!read_buffer) {
+		CARD_Close(&cardfile);
 		return -1;
 	}
 
 	/* Read from the file */
 	u32 amountRead = 0;
+	u8 *dstStart = dst;
 	// If this file was put here by swiss, then skip the first 8192 bytes
 	if(swissFile && !isCopyGCIMode) {
 		print_debug("Swiss copied file detected, skipping icon\n");
@@ -306,20 +312,20 @@ s32 deviceHandler_CARD_readFile(file_handle* file, void* buffer, u32 length){
 		
 		if(ret == CARD_ERROR_READY)
 			memcpy(dst,read_buffer,readsize);
-		else 
+		else
+		{
+			CARD_Close(&cardfile);
+			free(read_buffer);
 			return ret;
+		}
 		dst+=readsize;
 		file->offset += readsize;
 		length -= readsize;
 		amountRead += readsize;
 	}
-	// For swiss adjusted files, don't trail off the end.
-	if(swissFile && length != 0) {
-		amountRead+= length;
-	}
-	DCFlushRange(dst, amountRead);
+	DCFlushRange(dstStart, amountRead);
 	CARD_Close(&cardfile);
-	free(read_buffer);   
+	free(read_buffer);
 
 	return amountRead;
 }
@@ -361,7 +367,15 @@ s32 deviceHandler_CARD_writeFile(file_handle* file, const void* data, u32 length
 	ret = CARD_Open(slot,filename, &cardfile);
 
 	print_debug("Tried to open: [%s] in slot %s got res: %i\n",filename, slot ? "B":"A", ret);
-	
+
+	if(ret == CARD_ERROR_READY && gciInfo != NULL) {
+		// A GCI import targets its internal save name; replace any existing
+		// entry wholesale rather than partially overwriting it.
+		CARD_Close(&cardfile);
+		ret = CARD_Delete(slot, filename);
+		if(ret == CARD_ERROR_READY || ret == CARD_ERROR_NOFILE) ret = CARD_ERROR_NOFILE;
+	}
+
 	if(ret == CARD_ERROR_NOFILE) {
 		// If the file doesn't exist, create it.
 		ret = CARD_Create(slot, filename,adj_length,&cardfile);
@@ -381,6 +395,10 @@ s32 deviceHandler_CARD_writeFile(file_handle* file, const void* data, u32 length
 	// Write the icon, comment, etc.
 	time_t gc_time = time (NULL);
 	char *tmpBuffer = memalign(32,adj_length);
+	if(!tmpBuffer) {
+		CARD_Close(&cardfile);
+		return -1;
+	}
 	memset(tmpBuffer,0,adj_length);
 	if(gciInfo == NULL) {
 		strcpy(tmpBuffer, filename);
@@ -416,12 +434,14 @@ s32 deviceHandler_CARD_writeFile(file_handle* file, const void* data, u32 length
 	else {	// Info is coming from a GCI
 		cardstat.banner_fmt = gciInfo->banner_fmt;
 		cardstat.time = gciInfo->time;
-		cardstat.icon_addr = gciInfo->icon_addr;
+		// Offsets must stay within the file we just wrote (-1 == no icon/comment).
+		cardstat.icon_addr = (gciInfo->icon_addr == 0xFFFFFFFF || gciInfo->icon_addr < adj_length) ? gciInfo->icon_addr : 0;
 		cardstat.icon_fmt = gciInfo->icon_fmt;
-		cardstat.icon_speed = gciInfo->icon_speed;
-		cardstat.comment_addr = gciInfo->comment_addr;
+		cardstat.icon_speed = gciInfo->icon_speed <= CARD_SPEED_SLOW ? gciInfo->icon_speed : CARD_SPEED_FAST;
+		cardstat.comment_addr = (gciInfo->comment_addr == 0xFFFFFFFF || gciInfo->comment_addr < adj_length) ? gciInfo->comment_addr : 0;
 	}
-	CARD_SetStatus (slot, cardfile.filenum, &cardstat);
+	if(ret == CARD_ERROR_READY)
+		CARD_SetStatus (slot, cardfile.filenum, &cardstat);
 	
 	free(tmpBuffer);
 	CARD_Close(&cardfile);
@@ -480,7 +500,7 @@ s32 deviceHandler_CARD_init(file_handle* file){
 	if(file->status == CARD_ERROR_READY) {
 		int ret = CARD_GetMemSize(slot, &card_memsize[slot]);
 		if(ret == CARD_ERROR_READY) {
-			initial_CARD_info[slot].totalSpace = (u64)(card_memsize[slot] << 20 >> 3);
+			initial_CARD_info[slot].totalSpace = ((u64)card_memsize[slot] << 17);
 		}
 	}
 	initial_CARD_info[slot].freeSpace = 0LL;
