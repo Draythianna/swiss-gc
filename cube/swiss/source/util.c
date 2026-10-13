@@ -346,13 +346,21 @@ int find_existing_entry(char *entry, bool load) {
 }
 
 bool deleteFileOrDir(file_handle* entry) {
+	return deleteFileOrDirWithDepth(entry, 0);
+}
+
+bool deleteFileOrDirWithDepth(file_handle* entry, int depth) {
+	if(depth > 16) {
+		print_debug("Delete recursion too deep, refusing\n");
+		return false;
+	}
 	if(entry->fileType == IS_DIR) {
 		print_debug("Entering dir for deletion: %s\n", entry);
 		file_handle* dirEntries = NULL;
 		int dirEntryCount = entry->device->readDir(entry, &dirEntries, -1);
 		int i;
 		for(i = 0; i < dirEntryCount; i++) {
-			if(!deleteFileOrDir(&dirEntries[i])) {
+			if(!deleteFileOrDirWithDepth(&dirEntries[i], depth + 1)) {
 				return false;
 			}
 		}

@@ -263,10 +263,10 @@ size_t concatf_path(char *pathName, const char *dirName, const char *baseName, .
 // Either renames a path to a new one, or creates one.
 void ensure_path(int deviceSlot, char *path, char *oldPath, bool hidden) {
 	file_handle fhFullPath = { .fileType = IS_DIR };
-	concat_path(fhFullPath.name, devices[deviceSlot]->initial->name, path);
+	if(concat_path(fhFullPath.name, devices[deviceSlot]->initial->name, path) >= PATHNAME_MAX) return;
 	if(oldPath) {
 		file_handle fhOldFullPath = { .fileType = IS_DIR };
-		concat_path(fhOldFullPath.name, devices[deviceSlot]->initial->name, oldPath);
+		if(concat_path(fhOldFullPath.name, devices[deviceSlot]->initial->name, oldPath) >= PATHNAME_MAX) return;
 		if(devices[deviceSlot]->renameFile) {
 			if(devices[deviceSlot]->renameFile(&fhOldFullPath, fhFullPath.name)) {
 				if(devices[deviceSlot]->makeDir) {

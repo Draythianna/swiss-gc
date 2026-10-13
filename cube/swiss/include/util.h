@@ -24,6 +24,7 @@ bool update_recent();
 bool is_recent_entry(char *entry);
 int find_existing_entry(char *entry, bool load);
 bool deleteFileOrDir(file_handle* entry);
+bool deleteFileOrDirWithDepth(file_handle* entry, int depth);
 int formatBytes(char *string, off_t count, blksize_t blocksize, bool metric);
 
 #endif 

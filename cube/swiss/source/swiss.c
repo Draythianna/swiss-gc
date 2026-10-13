@@ -1106,7 +1106,8 @@ bool select_dest_dir(file_handle* initial, char* selection)
 			curDirEntries = NULL;
 			num_files = devices[DEVICE_DEST]->readDir(&curDir, &curDirEntries, IS_DIR);
 			num_files = sortFiles(curDirEntries, num_files, &directory);
-			if(num_files <= 1 && destDirBox == NULL) {
+			if(num_files <= 1) {
+				// First visit or after a refresh failure: take the current dir.
 				strcpy(selection, curDir.name);
 				break;
 			}
@@ -1869,6 +1870,7 @@ bool manage_file() {
 		}
 		// Traverse this destination device and let the user select a directory to dump the file in
 		file_handle *destFile = calloc(1, sizeof(file_handle));
+		if(!destFile) return false;
 		
 		// Show a directory only browser and get the destination file location
 		ret = select_dest_dir(devices[DEVICE_DEST]->initial, destFile->name);
@@ -1884,10 +1886,20 @@ bool manage_file() {
 		u32 isDestCard = devices[DEVICE_DEST] == &__device_card_a || devices[DEVICE_DEST] == &__device_card_b;
 		u32 isSrcCard = devices[DEVICE_CUR] == &__device_card_a || devices[DEVICE_CUR] == &__device_card_b;
 		
-		concat_path(destFile->name, destFile->name, stripInvalidChars(getRelativeName(curFile.name)));
+		if(concat_path(destFile->name, destFile->name, stripInvalidChars(getRelativeName(curFile.name))) >= PATHNAME_MAX) {
+			uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(D_WARN, "Destination path too long"));
+			sleep(2);
+			DrawDispose(msgBox);
+			return false;
+		}
 		// Create a GCI if something is coming out from CARD to another device
 		if(isSrcCard && !isDestCard) {
-			strlcat(destFile->name, ".gci", PATHNAME_MAX);
+			if(strlcat(destFile->name, ".gci", PATHNAME_MAX) >= PATHNAME_MAX) {
+				uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(D_WARN, "Destination path too long"));
+				sleep(2);
+				DrawDispose(msgBox);
+				return false;
+			}
 		}
 
 		// If the destination file already exists, ask the user what to do
@@ -1961,7 +1973,7 @@ bool manage_file() {
 						strcpy(destFile->name + cursor, name_backup + extension_start);
 					}
 
-					while(!devices[DEVICE_DEST]->statFile(destFile)) {
+					while(devices[DEVICE_DEST]->statFile && !devices[DEVICE_DEST]->statFile(destFile)) {
 						copy_num++;
 						if(copy_num > 99) {
 							DrawDispose(dupeBox);
@@ -2035,6 +2047,12 @@ bool manage_file() {
 			u32 bulkWrite = isSrcCard || isDestCard || devices[DEVICE_DEST] == &__device_qoob;
 			u32 curOffset = curFile.offset, cancelled = 0, chunkSize = bulkWrite ? curFile.size - curOffset : (256*1024);
 			char *readBuffer = (char*)memalign(32,chunkSize);
+			if(!readBuffer) {
+				uiDrawObj_t *msgBox = DrawPublish(DrawMessageBox(D_FAIL, "Insufficient memory for copy"));
+				sleep(2);
+				DrawDispose(msgBox);
+				return false;
+			}
 			sprintf(txtbuffer, "Copying to: %s",getRelativeName(destFile->name));
 			uiDrawObj_t* progBar = DrawProgressBar(false, 0, txtbuffer);
 			DrawPublish(progBar);
@@ -2160,6 +2178,7 @@ void verify_game()
 	}
 	
 	unsigned char *readBuffer = (unsigned char*)memalign(32,chunkSize);
+	if(!readBuffer) { return; }
 	uiDrawObj_t* progBar = DrawProgressBar(false, 0, "Verifying\205");
 	DrawPublish(progBar);
 	
@@ -2757,7 +2776,7 @@ int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPat
 uiDrawObj_t* draw_game_info(ConfigEntry *config) {
 	uiDrawObj_t *container = DrawEmptyBox(75,120, getVideoMode()->fbWidth-78, 400);
 
-	sprintf(txtbuffer, "%s", curFile.meta && curFile.meta->displayName ? curFile.meta->displayName : getRelativeName(curFile.name));
+	snprintf(txtbuffer, 2048, "%s", curFile.meta && curFile.meta->displayName ? curFile.meta->displayName : getRelativeName(curFile.name));
 	float scale = GetTextScaleToFitInWidth(txtbuffer,(getVideoMode()->fbWidth-78)-75);
 	DrawAddChild(container, DrawStyledLabel(640/2, 130, txtbuffer, scale, ALIGN_CENTER, defaultColor));
 
@@ -2787,7 +2806,7 @@ uiDrawObj_t* draw_game_info(ConfigEntry *config) {
 			if(curFile.meta->regionTexObj)
 				DrawAddChild(container, DrawTexObj(curFile.meta->regionTexObj, 449, 262, 32, 20, 0, 0.0f, 1.0f, 0.0f, 1.0f, 0));
 
-			sprintf(txtbuffer, "%s", curFile.meta->bannerDesc.description);
+			snprintf(txtbuffer, 2048, "%.256s", curFile.meta->bannerDesc.description);
 			char* rest = &txtbuffer[0]; 
 			char* tok;
 			int line = 0;
@@ -2795,7 +2814,7 @@ uiDrawObj_t* draw_game_info(ConfigEntry *config) {
 			while ((tok = strtok_r (rest,"\r\n", &rest))) {
 				minScale = MIN(GetTextScaleToFitInWidth(tok,(getVideoMode()->fbWidth-78)-75), minScale);
 			}
-			sprintf(txtbuffer, "%s", curFile.meta->bannerDesc.description);
+			snprintf(txtbuffer, 2048, "%.256s", curFile.meta->bannerDesc.description);
 			rest = &txtbuffer[0]; 
 			while ((tok = strtok_r (rest,"\r\n", &rest))) {
 				DrawAddChild(container, DrawStyledLabel(640/2, 315+(line*minScale*24), tok, minScale, ALIGN_CENTER, defaultColor));
