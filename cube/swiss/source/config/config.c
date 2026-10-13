@@ -423,10 +423,14 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 
 				if(!strcmp("ID", name)) {
 					defaultPassed = true;
-					if(!first) {
-						configEntriesCount++;
-					}
+					// Bound the on-stack table; a crafted legacy config
+					// file must not overflow it.
+					int idx = first ? 0 : configEntriesCount + 1;
+					if(idx >= (int)(sizeof(configEntries)/sizeof(configEntries[0])))
+						break;
+					configEntriesCount = idx;
 					strncpy(configEntries[configEntriesCount].game_id, value, 4);
+					configEntries[configEntriesCount].game_id[4] = '\0';
 					first = 0;
 					// Fill this entry with defaults incase some values are missing..
 					config_defaults(&configEntries[configEntriesCount]);
@@ -674,7 +678,7 @@ void config_parse_legacy(char *configData, void (*progress_indicator)(char*, int
 		line = strtok_r( NULL, "\r\n", &linectx);
 	}
 
-	if(configEntriesCount > 0 || !first) {
+	if((configEntriesCount > 0 || !first) && configEntriesCount + 1 < (int)(sizeof(configEntries)/sizeof(configEntries[0]))) {
 		configEntriesCount++;
 		config_defaults(&configEntries[configEntriesCount]);
 	}
