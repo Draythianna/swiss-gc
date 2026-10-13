@@ -14,7 +14,7 @@
 #include "util.h"
 #include "devices/dvd/deviceHandler-DVD.h"
 
-static int httpd_in_use = 0;
+static volatile int httpd_in_use = 0;
 static lwp_t httpd_handle = LWP_THREAD_NULL;
 const static char http_200[] = "HTTP/1.1 200 OK\r\n";
 
@@ -78,8 +78,14 @@ void *httpd (void *arg) {
 					csock = net_accept (sock, (struct sockaddr *) &client, &clientlen);
 					if ( csock < 0 ) {
 						print_debug("Error connecting socket %d!\n", csock);
-						while(1);
+						usleep(250000);
+						continue;
 					}
+
+					// Don't let a silent client wedge the only server thread (10 s)
+					struct timeval socktimeout = {10, 0};
+					net_setsockopt (csock, SOL_SOCKET, SO_RCVTIMEO, &socktimeout, sizeof(socktimeout));
+					net_setsockopt (csock, SOL_SOCKET, SO_SNDTIMEO, &socktimeout, sizeof(socktimeout));
 
 					print_debug("Connecting port %d from %s\n", client.sin_port, inet_ntoa(client.sin_addr));
 					memset (temp, 0, 1026);
@@ -95,16 +101,17 @@ void *httpd (void *arg) {
 					// download a disc image
 					else if ( !strncmp( temp, http_get_dvd, strlen(http_get_dvd) ) ) {
 						net_send(csock, http_200, strlen(http_200), 0);
+						httpd_in_use = 1;
 						// See if there's a valid disc in the drive
 						if(initialize_disc(DISABLE_AUDIO) != DRV_ERROR) {
 							sprintf(temp, http_data_hdr, DISC_SIZE);
 							net_send(csock, temp, strlen(temp), 0);
 							// Loop and pump DVD data out
-							httpd_in_use = 1;
 							u64 ofs = 0;
 							char *dvd_buffer = (char*)memalign(32,2048);
+							if(!dvd_buffer) { httpd_in_use = 0; net_close (csock); continue; }
 							for(ofs = 0; ofs < DISC_SIZE; ofs+=2048) {
-								DVD_Read(dvd_buffer,ofs,2048);
+								if(DVD_Read(dvd_buffer,ofs,2048) != 2048) memset(dvd_buffer, 0, 2048);
 								if(net_send(csock, dvd_buffer, 2048, 0) != 2048) {
 									break;
 								}
@@ -127,13 +134,15 @@ void *httpd (void *arg) {
 						httpd_in_use = 1;
 						int i = 0;
 						char *ipl_buffer = (char*)memalign(32,2048);
-						for(i = 0; i < 2*1024*1024; i+=2048) {
-							__SYS_ReadROM(ipl_buffer,2048,i);
-							if(net_send(csock, ipl_buffer, 2048, 0) != 2048) {
-								break;
+						if(ipl_buffer) {
+							for(i = 0; i < 2*1024*1024; i+=2048) {
+								__SYS_ReadROM(ipl_buffer,2048,i);
+								if(net_send(csock, ipl_buffer, 2048, 0) != 2048) {
+									break;
+								}
 							}
+							free(ipl_buffer);
 						}
-						free(ipl_buffer);
 						httpd_in_use = 0;
 					}
 					net_close (csock);
