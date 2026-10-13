@@ -1300,11 +1300,11 @@ void load_app(ExecutableFile *fileToPatch)
 				goto fail_early;
 			}
 			if(fileToPatch->file->device == &__device_dvd) {
-				adjust_tgc_fst((void*)fstAddr, fileToPatch->file->fileBase + fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
+				adjust_tgc_fst((void*)fstAddr, fileToPatch->file->fileBase + fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset, fileToPatch->fstSize);
 				*(vu32*)VAR_TGC_OFFSET = fileToPatch->file->fileBase + fileToPatch->tgcBase;
 			}
 			else {
-				adjust_tgc_fst((void*)fstAddr, fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset);
+				adjust_tgc_fst((void*)fstAddr, fileToPatch->tgcBase, fileToPatch->tgcFileStartArea, fileToPatch->tgcFakeOffset, fileToPatch->fstSize);
 				*(vu32*)VAR_TGC_OFFSET = fileToPatch->tgcBase;
 			}
 			
@@ -2378,11 +2378,17 @@ void load_game() {
 	}
 	
 	int numToPatch = 0;
-	ExecutableFile *filesToPatch = memalign(32, sizeof(ExecutableFile)*512);
-	memset(filesToPatch, 0, sizeof(ExecutableFile)*512);
+	ExecutableFile *filesToPatch = memalign(32, sizeof(ExecutableFile)*MAX_FILES_TO_PATCH);
+	if(!filesToPatch) {
+		uiDrawObj_t *failBox = DrawPublish(DrawMessageBox(D_FAIL, "Insufficient memory"));
+		sleep(2);
+		DrawDispose(failBox);
+		goto exit;
+	}
+	memset(filesToPatch, 0, sizeof(ExecutableFile)*MAX_FILES_TO_PATCH);
 
 	// Report to the user the patch status of this GCM/ISO file
-	numToPatch = check_game(&curFile, disc2File, filesToPatch);
+	numToPatch = check_game(&curFile, disc2File, filesToPatch, MAX_FILES_TO_PATCH);
 	
 	// Prompt for DOL selection if multi-dol
 	ExecutableFile *fileToPatch = NULL;
@@ -2411,6 +2417,7 @@ void load_game() {
 			}
 		}
 		if(swissSettings.bs2Boot) {
+			if(numToPatch >= MAX_FILES_TO_PATCH) goto too_many;
 			fileToPatch = &filesToPatch[numToPatch++];
 			strcpy(fileToPatch->name, "BS2.img");
 			fileToPatch->type = PATCH_BS2;
@@ -2418,11 +2425,22 @@ void load_game() {
 	}
 	else {
 		gameID_set(&GCMDisk, get_gcm_boot_hash(&GCMDisk, curFile.meta));
-		
+
+		if(numToPatch >= MAX_FILES_TO_PATCH) goto too_many;
 		fileToPatch = &filesToPatch[numToPatch++];
 		strcpy(fileToPatch->name, "BS2.img");
 		fileToPatch->type = PATCH_BS2;
 	}
+	goto have_file;
+
+too_many:
+	{
+		uiDrawObj_t *failBox = DrawPublish(DrawMessageBox(D_FAIL, "Too many executables in image"));
+		sleep(2);
+		DrawDispose(failBox);
+	}
+	goto fail_patched;
+have_file:
 	
 	s32 exi_channel = EXI_CHANNEL_MAX;
 	s32 exi_device = EXI_DEVICE_MAX;
@@ -2608,90 +2626,90 @@ void load_file()
 
 }
 
-int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch)
-{ 	
+int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch, int maxFiles)
+{
 	char* gameID = (char*)&GCMDisk;
 	uiDrawObj_t *msgBox = DrawPublish(DrawProgressBar(true, 0, "Checking Game\205"));
-	
+
 	int numToPatch;
 	if(tgcFile.magic == TGC_MAGIC) {
-		numToPatch = parse_tgc(file, filesToPatch, 0, getRelativeName(file->name));
+		numToPatch = parse_tgc(file, filesToPatch, 0, getRelativeName(file->name), maxFiles);
 	}
 	else {
-		numToPatch = parse_gcm(file, file2, filesToPatch);
+		numToPatch = parse_gcm(file, file2, filesToPatch, maxFiles);
 		
 		if(!strncmp(gameID, "GCCE01", 6) || !strncmp(gameID, "GCCJGC", 6) || !strncmp(gameID, "GCCP01", 6)) {
-			parse_gcm_add(file, filesToPatch, &numToPatch, "ffcc_cli.bin");
+			parse_gcm_add(file, filesToPatch, &numToPatch, "ffcc_cli.bin", maxFiles);
 		}
 		else if(!strncmp(gameID, "GHAE08", 6) || !strncmp(gameID, "GHAJ08", 6)) {
-			parse_gcm_add(file, filesToPatch, &numToPatch, "claire.rel");
-			parse_gcm_add(file, filesToPatch, &numToPatch, "leon.rel");
+			parse_gcm_add(file, filesToPatch, &numToPatch, "claire.rel", maxFiles);
+			parse_gcm_add(file, filesToPatch, &numToPatch, "leon.rel", maxFiles);
 		}
 		else if(!strncmp(gameID, "GHAP08", 6)) {
 			switch(swissSettings.sramLanguage) {
 				default:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon.rel", maxFiles);
 					break;
 				case SYS_LANG_GERMAN:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_g.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_g.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_g.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_g.rel", maxFiles);
 					break;
 				case SYS_LANG_FRENCH:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_f.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_f.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_f.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_f.rel", maxFiles);
 					break;
 				case SYS_LANG_SPANISH:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_s.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_s.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_s.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_s.rel", maxFiles);
 					break;
 				case SYS_LANG_ITALIAN:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_i.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_i.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_i.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_i.rel", maxFiles);
 					break;
 				case SYS_LANG_DUTCH:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_f.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_g.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_i.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_s.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_f.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_g.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_i.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_s.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_f.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_g.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_i.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "claire_s.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_f.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_g.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_i.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "leon_s.rel", maxFiles);
 					break;
 			}
 		}
 		else if(!strncmp(gameID, "GLEP08", 6)) {
 			switch(swissSettings.sramLanguage) {
 				default:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "eng.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "eng.rel", maxFiles);
 					break;
 				case SYS_LANG_GERMAN:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "ger.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "ger.rel", maxFiles);
 					break;
 				case SYS_LANG_FRENCH:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "fra.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "fra.rel", maxFiles);
 					break;
 				case SYS_LANG_SPANISH:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "spa.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "spa.rel", maxFiles);
 					break;
 				case SYS_LANG_ITALIAN:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "ita.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "ita.rel", maxFiles);
 					break;
 				case SYS_LANG_DUTCH:
-					parse_gcm_add(file, filesToPatch, &numToPatch, "eng.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "fra.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "ger.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "ita.rel");
-					parse_gcm_add(file, filesToPatch, &numToPatch, "spa.rel");
+					parse_gcm_add(file, filesToPatch, &numToPatch, "eng.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "fra.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "ger.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "ita.rel", maxFiles);
+					parse_gcm_add(file, filesToPatch, &numToPatch, "spa.rel", maxFiles);
 					break;
 			}
 		}
 		if(swissSettings.disableVideoPatches < 1) {
 			if(!strncmp(gameID, "GS8P7D", 6)) {
-				parse_gcm_add(file, filesToPatch, &numToPatch, "SPYROCFG_NGC.CFG");
+				parse_gcm_add(file, filesToPatch, &numToPatch, "SPYROCFG_NGC.CFG", maxFiles);
 			}
 		}
 	}

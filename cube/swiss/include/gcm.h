@@ -106,11 +106,13 @@ struct ExecutableFile {
 	u32 tgcFakeOffset;
 };
 
-int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch);
-void adjust_tgc_fst(char* FST, u32 tgc_base, u32 fileAreaStart, u32 fakeAmount);
-int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, char* tgcname);
+#define MAX_FILES_TO_PATCH 512
+
+int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch, int maxFiles);
+void adjust_tgc_fst(char* FST, u32 tgc_base, u32 fileAreaStart, u32 fakeAmount, u32 fst_size);
+int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, char* tgcname, int maxFiles);
 int patch_gcm(ExecutableFile *filesToPatch, int numToPatch);
-void parse_gcm_add(file_handle *file, ExecutableFile *filesToPatch, int *numToPatch, char *fileName);
+void parse_gcm_add(file_handle *file, ExecutableFile *filesToPatch, int *numToPatch, char *fileName, int maxFiles);
 int read_fst(file_handle *file, file_handle** dir, u64 *usedSpace);
 void get_gcm_banner(file_handle *file, DiskHeader *diskHeader, u32 *file_offset, u32 *file_size);
 DiskHeader *get_gcm_header(file_handle *file);

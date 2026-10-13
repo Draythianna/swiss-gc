@@ -115,7 +115,8 @@ void get_gcm_banner(file_handle *file, DiskHeader *diskHeader, u32 *file_offset,
 }
 
 // Add a file to our current filesToPatch based on fileName
-void parse_gcm_add(file_handle *file, ExecutableFile *filesToPatch, int *numToPatch, char *fileName) {
+void parse_gcm_add(file_handle *file, ExecutableFile *filesToPatch, int *numToPatch, char *fileName, int maxFiles) {
+	if(*numToPatch >= maxFiles) return;
 	DiskHeader *diskHeader = get_gcm_header(file);
 	if(!diskHeader) return;
 	
@@ -235,7 +236,7 @@ u32 get_iso_boot_record(file_handle *file) {
 }
 
 // Returns the number of filesToPatch and fills out the filesToPatch array passed in (pre-allocated)
-int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch) {
+int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch, int maxFiles) {
 	char	filename[256];
 	int		dolOffset = 0, dolSize = 0, numFiles = 0;
 
@@ -243,6 +244,10 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 	if(!diskHeader) return 0;
 	if(diskHeader->MaxFSTSize > GCMDisk.MaxFSTSize) {
 		GCMDisk.MaxFSTSize = diskHeader->MaxFSTSize;
+	}
+	if(numFiles + 2 > maxFiles) {
+		free(diskHeader);
+		return numFiles;
 	}
 
 	// Patch the apploader too!
@@ -255,7 +260,7 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 	}
 	filesToPatch[numFiles].file = file;
 	filesToPatch[numFiles].offset = 0x2440;
-	filesToPatch[numFiles].size = sizeof(ApploaderHeader) + ((apploaderHeader.size + 31) & ~31) + ((apploaderHeader.rebootSize + 31) & ~31);
+	filesToPatch[numFiles].size = sizeof(ApploaderHeader) + ((u64)(apploaderHeader.size + 31) & ~31) + ((u64)(apploaderHeader.rebootSize + 31) & ~31);
 	filesToPatch[numFiles].type = PATCH_APPLOADER;
 	sprintf(filesToPatch[numFiles].name, "apploader.img");
 	numFiles++;
@@ -309,20 +314,21 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 		
 	int i;
 	// go through every entry
-	for (i=1;i<entries;i++) 
-	{ 
-		u32 offset=i*0x0c; 
+	for (i=1;i<entries;i++)
+	{
+		if(numFiles >= maxFiles) break;
+		u32 offset=i*0x0c;
 		if(FST[offset]==0) //skip directories
-		{ 
+		{
 			u32 file_offset,size = 0;
-			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF); 
+			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF);
 			memset(&filename[0],0,256);
-			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255); 
+			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255);
 			memcpy(&file_offset,&FST[offset+4],4);
 			memcpy(&size,&FST[offset+8],4);
 			if(endsWith(filename,".dol")) {
 				if(strcasecmp(filename,"ffe.dol") && strcasecmp(filename,"game_mainmenu.dol")) {
-					// Some games contain a single "default.dol", these do not need 
+					// Some games contain a single "default.dol", these do not need
 					// pre-patching because they are what is actually pointed to by the apploader (and loaded by us)
 					if(dolOffset == file_offset || dolSize == size || !valid_dol_file(file, file_offset, size)) {
 						continue;
@@ -380,70 +386,76 @@ int parse_gcm(file_handle *file, file_handle *file2, ExecutableFile *filesToPatc
 			}
 			if(endsWith(filename,".tgc")) {
 				// Go through all the TGC's internal files
-				numFiles += parse_tgc(file, &filesToPatch[numFiles], file_offset, filename);
+				numFiles += parse_tgc(file, &filesToPatch[numFiles], file_offset, filename, maxFiles - numFiles);
 			}
-		} 
+		}
 	}
 	free(FST);
 	free(diskHeader);
-	
-	if(file2) {
-		numFiles += parse_gcm(file2, NULL, &filesToPatch[numFiles]);
+
+	if(file2 && numFiles < maxFiles) {
+		numFiles += parse_gcm(file2, NULL, &filesToPatch[numFiles], maxFiles - numFiles);
 	}
 	// This need to be last.
-	filesToPatch[numFiles].file = file;
-	filesToPatch[numFiles].offset = 0;
-	filesToPatch[numFiles].size = 0x2440;
-	filesToPatch[numFiles].type = PATCH_OTHER;
-	sprintf(filesToPatch[numFiles].name, "boot.bin");
-	numFiles++;
+	if(numFiles < maxFiles) {
+		filesToPatch[numFiles].file = file;
+		filesToPatch[numFiles].offset = 0;
+		filesToPatch[numFiles].size = 0x2440;
+		filesToPatch[numFiles].type = PATCH_OTHER;
+		sprintf(filesToPatch[numFiles].name, "boot.bin");
+		numFiles++;
+	}
 	return numFiles;
 }
 
 // Adjust TGC FST entries in case we load a DOL from one directly
-void adjust_tgc_fst(char* FST, u32 tgc_base, u32 fileAreaStart, u32 fakeAmount) {
+void adjust_tgc_fst(char* FST, u32 tgc_base, u32 fileAreaStart, u32 fakeAmount, u32 fst_size) {
+	// Don't trust the count in the FST; bound it by the buffer size.
 	u32 entries=*(unsigned int*)&FST[8];
-		
+	u32 max_entries = fst_size / FST_ENTRY_SIZE;
+	if(entries > max_entries) entries = max_entries;
+
 	int i;
 	// go through every entry
-	for (i=1;i<entries;i++) 
-	{ 
-		u32 offset=i*0x0c; 
+	for (i=1;i<entries;i++)
+	{
+		u32 offset=i*0x0c;
 		if(FST[offset]==0) //skip directories
-		{ 
+		{
 			u32 file_offset = 0;
 			memcpy(&file_offset, &FST[offset+4], 4);
 			*(unsigned int*)&FST[offset+4] = (file_offset-fakeAmount) + (tgc_base+fileAreaStart);
-		} 
+		}
 	}
 }
 
-int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, char* tgcname) {
+int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, char* tgcname, int maxFiles) {
 	char	filename[256];
 	int		numFiles = 0;
-	
+
 	TGCHeader tgcHeader;
 	file->device->seekFile(file,tgc_base,DEVICE_HANDLER_SEEK_SET);
 	file->device->readFile(file,&tgcHeader,sizeof(TGCHeader));
-	
+
 	if(tgcHeader.magic != TGC_MAGIC) return 0;
 	if(tgcHeader.fstMaxLength > GCMDisk.MaxFSTSize) {
 		GCMDisk.MaxFSTSize = tgcHeader.fstMaxLength;
 	}
-	
-	if(tgcHeader.apploaderOffset != 0) {
+
+	if(tgcHeader.apploaderOffset != 0 && numFiles + 2 <= maxFiles) {
 		ApploaderHeader apploaderHeader;
 		file->device->seekFile(file,tgc_base+tgcHeader.apploaderOffset,DEVICE_HANDLER_SEEK_SET);
 		file->device->readFile(file,&apploaderHeader,sizeof(ApploaderHeader));
 		
 		filesToPatch[numFiles].file = file;
 		filesToPatch[numFiles].offset = tgc_base+tgcHeader.apploaderOffset;
-		filesToPatch[numFiles].size = sizeof(ApploaderHeader) + ((apploaderHeader.size + 31) & ~31) + ((apploaderHeader.rebootSize + 31) & ~31);
+		filesToPatch[numFiles].size = sizeof(ApploaderHeader) + ((u64)(apploaderHeader.size + 31) & ~31) + ((u64)(apploaderHeader.rebootSize + 31) & ~31);
 		filesToPatch[numFiles].type = PATCH_APPLOADER;
-		sprintf(filesToPatch[numFiles].name, "%s/%s", tgcname, "apploader.img");
+		snprintf(filesToPatch[numFiles].name, sizeof(filesToPatch[numFiles].name), "%s/%s", tgcname, "apploader.img");
 		numFiles++;
 	}
-	
+	if(numFiles >= maxFiles) return numFiles;
+
 	filesToPatch[numFiles].file = file;
 	filesToPatch[numFiles].offset = tgc_base+tgcHeader.dolStart;
 	filesToPatch[numFiles].size = tgcHeader.dolLength;
@@ -453,29 +465,31 @@ int parse_tgc(file_handle *file, ExecutableFile *filesToPatch, u32 tgc_base, cha
 	filesToPatch[numFiles].tgcBase = tgc_base;
 	filesToPatch[numFiles].tgcFileStartArea = tgcHeader.userStart;
 	filesToPatch[numFiles].tgcFakeOffset = tgcHeader.gcmUserStart;
-	sprintf(filesToPatch[numFiles].name, "%s/%s", tgcname, "default.dol");
+	snprintf(filesToPatch[numFiles].name, sizeof(filesToPatch[numFiles].name), "%s/%s", tgcname, "default.dol");
 	numFiles++;
 
 	// Alloc and read FST
 	char *FST = get_fst(file, tgc_base + tgcHeader.fstStart, tgcHeader.fstLength);
+	if(!FST) return numFiles;
 
 	// Adjust TGC FST offsets
-	adjust_tgc_fst(FST, tgc_base, tgcHeader.userStart, tgcHeader.gcmUserStart);
+	adjust_tgc_fst(FST, tgc_base, tgcHeader.userStart, tgcHeader.gcmUserStart, tgcHeader.fstLength);
 	
 	u32 entries=*(unsigned int*)&FST[8];
 	u32 string_table_offset=FST_ENTRY_SIZE*entries;
 		
 	int i;
 	// go through every entry
-	for (i=1;i<entries;i++) 
-	{ 
-		u32 offset=i*0x0c; 
+	for (i=1;i<entries;i++)
+	{
+		if(numFiles >= maxFiles) break;
+		u32 offset=i*0x0c;
 		if(FST[offset]==0) //skip directories
-		{ 
+		{
 			u32 file_offset,size = 0;
-			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF); 
+			u32 filename_offset=((*(unsigned int*)&FST[offset]) & 0x00FFFFFF);
 			memset(&filename[0],0,256);
-			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255); 
+			memcpy(&filename[0],&FST[string_table_offset+filename_offset],255);
 			memcpy(&file_offset,&FST[offset+4],4);
 			memcpy(&size,&FST[offset+8],4);
 			if(endsWith(filename,".dol")) {

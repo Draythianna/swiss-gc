@@ -81,7 +81,7 @@ extern void menu_loop();
 extern void boot_dol(file_handle* file, int argc, char *argv[]);
 extern bool manage_file();
 extern void load_file();
-extern int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch);
+extern int check_game(file_handle *file, file_handle *file2, ExecutableFile *filesToPatch, int maxFiles);
 extern int cheats_game();
 extern void install_game();
 extern int info_game(ConfigEntry *config);
