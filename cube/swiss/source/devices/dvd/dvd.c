@@ -405,7 +405,7 @@ void npdp_start()
 	if(*(u16*)&buf[2] == 0x0200) {
 		npdp_inquiry(buf);
 		npdp_getid(buf);
-		print_debug("NPDP ID: [%s]\n", buf);
+		print_debug("NPDP ID: [%.64s]\n", buf);
 	}
 	free(buf);
 }

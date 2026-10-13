@@ -286,15 +286,19 @@ s32 deviceHandler_DVD_readDir(file_handle* ffile, file_handle** dir, u32 type){
 		if(num_entries <= 0) { return num_entries; }
 		// malloc the directory structure
 		*dir = calloc(num_entries, sizeof(file_handle));
+		if(!*dir) { free(tmpTable); free(tmpName); return -1; }
 		
 		// parse entries
-		for(i = 0; i < num_entries; i++) {
+		for(i = 0; i < MAX_MULTIGAME && num < num_entries; i++) {
 			tmpOffset = (dvdDiscTypeInt == GCOSD9_MULTIGAME_DISC) ? (tmpTable[i]<<2):(tmpTable[i]);
+			u32 tmpValid = (tmpOffset) && (tmpOffset%(isGC?0x8000:0x20000)==0) && (tmpOffset<(isGC?DISC_SIZE:WII_D9_SIZE));
+			print_debug("fileBase is %016llX isGC? %s\n", tmpOffset, isGC ? "yes" : "no");
+			if(!tmpValid) continue;
+			// Offsets must strictly increase, else the previous size would underflow.
 			if(num > 0) {
+				if(tmpOffset <= (*dir)[num-1].fileBase) continue;
 				(*dir)[num-1].size = tmpOffset - (*dir)[num-1].fileBase;
 			}
-			print_debug("fileBase is %016llX isGC? %s\n", tmpOffset, isGC ? "yes" : "no");
-			if((tmpOffset%(isGC?0x8000:0x20000)==0) && (tmpOffset<(isGC?DISC_SIZE:WII_D9_SIZE))) {
 				DVD_Read(&tmpName[0],tmpOffset+32,64);
 				concatf_path((*dir)[num].name, ffile->name, "%.64s.gcm", &tmpName[0]);
 				(*dir)[num].fileBase = tmpOffset;
@@ -304,8 +308,7 @@ s32 deviceHandler_DVD_readDir(file_handle* ffile, file_handle** dir, u32 type){
 				(*dir)[num].status = STATUS_NOT_MAPPED;
 				(*dir)[num].meta = 0;
 				(*dir)[num].device = ffile->device;
-				num++;
-			}
+			num++;
 		}
 		free(tmpTable);
 		free(tmpName);
