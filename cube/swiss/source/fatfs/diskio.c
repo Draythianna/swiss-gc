@@ -60,12 +60,20 @@ DSTATUS disk_initialize (
 
 	switch (pdrv) {
 		case DEV_RAM:
-			disc[pdrv] = dvmDiscCacheCreate(disc[pdrv], 2, 8);
+			{
+			DvmDisc *cached = dvmDiscCacheCreate(disc[pdrv], 2, 8);
+			if (!cached) return STA_NOINIT;
+			disc[pdrv] = cached;
 			break;
+		}
 
 		default:
-			disc[pdrv] = dvmDiscCacheCreate(disc[pdrv], 128, 8);
+		{
+			DvmDisc *cached = dvmDiscCacheCreate(disc[pdrv], 128, 8);
+			if (!cached) return STA_NOINIT;
+			disc[pdrv] = cached;
 			break;
+		}
 	}
 
 	return (disc[pdrv]->features & FEATURE_MEDIUM_CANWRITE) ? 0 : STA_PROTECT;

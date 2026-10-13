@@ -105,14 +105,16 @@ device_info* deviceHandler_FAT_info(file_handle* file) {
 s32 deviceHandler_FAT_readDir(file_handle* ffile, file_handle** dir, u32 type) {	
 
 	FFDIR* dp = malloc(sizeof(FFDIR));
+	if(!dp) return -1;
 	memset(dp, 0, sizeof(FFDIR));
-	if(f_opendir(dp, ffile->name) != FR_OK) return -1;
+	if(f_opendir(dp, ffile->name) != FR_OK) { free(dp); return -1; }
 	FATFS* fatfs = dp->obj.fs;
 	FILINFO entry;
 	
 	// Set everything up to read
 	int num_entries = 1, i = 1;
 	*dir = calloc(num_entries, sizeof(file_handle));
+	if(!*dir) { f_closedir(dp); free(dp); return -1; }
 	concat_path((*dir)[0].name, ffile->name, "..");
 	(*dir)[0].fileType = IS_SPECIAL;
 	(*dir)[0].device   = ffile->device;
@@ -124,7 +126,9 @@ s32 deviceHandler_FAT_readDir(file_handle* ffile, file_handle** dir, u32 type) {
 			// Make sure we have room for this one
 			if(num_entries == i) {
 				num_entries *= 2;
-				*dir = reallocarray(*dir, num_entries, sizeof(file_handle));
+				file_handle *newDir = reallocarray(*dir, num_entries, sizeof(file_handle));
+				if(!newDir) { free(*dir); *dir = NULL; f_closedir(dp); free(dp); return -1; }
+				*dir = newDir;
 			}
 			memset(&(*dir)[i], 0, sizeof(file_handle));
 			if(concat_path((*dir)[i].name, ffile->name, entry.fname) < PATHNAME_MAX && entry.fsize <= UINT32_MAX) {
@@ -140,7 +144,8 @@ s32 deviceHandler_FAT_readDir(file_handle* ffile, file_handle** dir, u32 type) {
 	}
 	if(num_entries != i) {
 		num_entries = i;
-		*dir = reallocarray(*dir, num_entries, sizeof(file_handle));
+		file_handle *newDir = reallocarray(*dir, num_entries, sizeof(file_handle));
+		if(newDir) *dir = newDir;
 	}
 	
 	f_closedir(dp);
@@ -153,6 +158,7 @@ s32 deviceHandler_FAT_statFile(file_handle* file) {
 	FATFS* fatfs;
 	int ret = f_stat(file->name, &entry, &fatfs);
 	if(ret == FR_OK) {
+		if(entry.fsize > UINT32_MAX) return -1;
 		file->fileBase   = entry.fclust;
 		file->size       = entry.fsize;
 		file->fileAttrib = entry.fattrib;
@@ -166,16 +172,19 @@ s64 deviceHandler_FAT_seekFile(file_handle* file, s64 where, u32 type){
 	if(type == DEVICE_HANDLER_SEEK_SET) file->offset = where;
 	else if(type == DEVICE_HANDLER_SEEK_CUR) file->offset = file->offset + where;
 	else if(type == DEVICE_HANDLER_SEEK_END) file->offset = file->size + where;
+	if((s64)file->offset < 0) file->offset = 0;
 	return file->offset;
 }
 
 s32 deviceHandler_FAT_readFile(file_handle* file, void* buffer, u32 length) {
 	if(!file->ffsFp) {
 		FFFIL* fp = malloc(sizeof(FFFIL));
+		if(!fp) return -1;
 		if(f_open(fp, file->name, FA_READ) != FR_OK) {
 			free(fp);
 			return -1;
 		}
+		if(fp->obj.objsize > UINT32_MAX) { f_close(fp); free(fp); return -1; }
 		file->ffsFp     = fp;
 		FATFS* fatfs    = fp->obj.fs;
 		file->fileBase  = fp->obj.sclust;
@@ -197,6 +206,7 @@ s32 deviceHandler_FAT_readFile(file_handle* file, void* buffer, u32 length) {
 s32 deviceHandler_FAT_writeFile(file_handle* file, const void* buffer, u32 length) {
 	if(!file->ffsFp) {
 		FFFIL* fp = malloc(sizeof(FFFIL));
+		if(!fp) return -1;
 		if(f_open(fp, file->name, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
 			free(fp);
 			return -1;
@@ -414,8 +424,8 @@ s32 deviceHandler_FAT_deleteFile(file_handle* file) {
 s32 deviceHandler_FAT_renameFile(file_handle* file, char* name) {
 	deviceHandler_FAT_closeFile(file);
 	int ret = f_rename(file->name, name);
-	if(ret == FR_OK || ret == FR_NO_FILE || ret == FR_NO_PATH)
-		strcpy(file->name, name);
+	if(ret == FR_OK)
+		strlcpy(file->name, name, PATHNAME_MAX);
 	return ret;
 }
 
