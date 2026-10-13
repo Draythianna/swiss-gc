@@ -326,6 +326,28 @@ bool getFragments(int deviceSlot, file_handle *file, file_frag **fragList, u32 *
 	return true;
 }
 
+/* funopen() callback buffer-size type differs across newlib versions */
+#ifdef _READ_WRITE_BUFSIZE_TYPE
+typedef _READ_WRITE_BUFSIZE_TYPE stream_bufsz_t;
+#else
+typedef size_t stream_bufsz_t;
+#endif
+
+static int stream_read(void *cookie, char *buffer, stream_bufsz_t size) {
+	file_handle *file = cookie;
+	return file->device->readFile(file, buffer, size);
+}
+
+static fpos_t stream_seek(void *cookie, fpos_t offset, int whence) {
+	file_handle *file = cookie;
+	return file->device->seekFile(file, offset, whence);
+}
+
+static int stream_close(void *cookie) {
+	file_handle *file = cookie;
+	return file->device->closeFile(file);
+}
+
 void printFragments(file_frag *fragList, u32 totFrags) {
 	print_debug("== Fragments List ==\n");
 	for(int i = 0; i < totFrags; i++) {
@@ -340,10 +362,10 @@ FILE* openFileStream(file_handle *file) {
 		return NULL;
 	}
 	return funopen((const void *)file,
-		(int (*)(void *, char *, size_t))file->device->readFile,
-		(int (*)(void *, const char *, size_t))NULL,
-		(fpos_t (*)(void *, fpos_t, int))file->device->seekFile,
-		(int (*)(void *))file->device->closeFile);
+		(int (*)(void *, char *, stream_bufsz_t))stream_read,
+		NULL,
+		(fpos_t (*)(void *, fpos_t, int))stream_seek,
+		(int (*)(void *))stream_close);
 }
 
 void* readFileBlockAligned(file_handle *file, u32 offset, u32 length) {

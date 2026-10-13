@@ -25,6 +25,13 @@
 #include "rt4k.h"
 #include "swiss.h"
 
+/* funopen() callback buffer-size type differs across newlib versions */
+#ifdef _READ_WRITE_BUFSIZE_TYPE
+typedef _READ_WRITE_BUFSIZE_TYPE stream_bufsz_t;
+#else
+typedef size_t stream_bufsz_t;
+#endif
+
 static struct {
 	FILE *fp;
 	int sd;
@@ -38,12 +45,12 @@ static struct {
 	.nodelay = 1,
 };
 
-static int rt4k_read(void *s, char *data, size_t size)
+static int rt4k_read(void *s, char *data, stream_bufsz_t size)
 {
 	return net_read(*(int *)s, data, size);
 }
 
-static int rt4k_write(void *s, const char *data, size_t size)
+static int rt4k_write(void *s, const char *data, stream_bufsz_t size)
 {
 	return net_write(*(int *)s, data, size);
 }

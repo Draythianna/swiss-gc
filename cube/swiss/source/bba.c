@@ -39,9 +39,10 @@ static void *net_thread_func(void *arg)
 	}
 
 	net_initialized = 1;
-	inet_ntoa_r(bba_localip, swissSettings.bbaLocalIp, sizeof(swissSettings.bbaLocalIp));
+	/* libogc2 lacks inet_ntoa_r; copy out of the static buffer immediately */
+	strlcpy(swissSettings.bbaLocalIp, inet_ntoa(bba_localip), sizeof(swissSettings.bbaLocalIp));
 	swissSettings.bbaNetmask = __builtin_stdc_leading_ones(bba_netmask.s_addr);
-	inet_ntoa_r(bba_gateway, swissSettings.bbaGateway, sizeof(swissSettings.bbaGateway));
+	strlcpy(swissSettings.bbaGateway, inet_ntoa(bba_gateway), sizeof(swissSettings.bbaGateway));
 
 	char ifname[4];
 	if (if_indextoname(1, ifname)) {
