@@ -126,7 +126,7 @@ static ftp_cache_page *FTPReadAheadCache = NULL;
 static u32 numFTP_RA_pages = 0;
 
 //used to reuse data connections with RETR
-static char last_cmd[FTP_MAX_LINE] = "";
+static char last_cmd[FTP_MAXPATH + 16] = "";
 static off_t last_off = 0;
 
 static bool dir_changed = false;
@@ -591,7 +591,8 @@ static int ftp_reconnect(ftp_env* env)
 // if res!=0, server response is checked.
 static int ftp_execute(ftp_env* env, char *cmd, int res, int reconnect)
 {
-	char buf[FTP_MAX_LINE];
+	// Commands embed absolute paths, so size for the maximum and verify.
+	char buf[FTP_MAXPATH + 16];
 	int r;
 
 	NET_PRINTF("FTP_EXECUTE: '%s', expect res=%d\n", cmd, res);
@@ -606,7 +607,8 @@ static int ftp_execute(ftp_env* env, char *cmd, int res, int reconnect)
 			return r;
 	}
 
-	sprintf(buf, "%s\r\n", cmd);
+	if( snprintf(buf, sizeof(buf), "%s\r\n", cmd) >= (int)sizeof(buf) )
+		return -ENAMETOOLONG;
 
 	if( SocketSend(env->ctrl_socket, buf, strlen(buf)) == false )
 	{
@@ -922,7 +924,7 @@ execute_open_actv_retry:
 
 		env->data_socket = *data_sock;
 		net_close(ssock);
-		strcpy(last_cmd, cmd);
+		strlcpy(last_cmd, cmd, sizeof(last_cmd));
 		last_off = offset;
 
 	}
@@ -1110,7 +1112,7 @@ execute_open_retry:
 		}
 
 		env->data_socket = *data_sock;
-		strcpy(last_cmd, cmd);
+		strlcpy(last_cmd, cmd, sizeof(last_cmd));
 		last_off = offset;
 	}
 	else
@@ -1420,7 +1422,7 @@ static bool FTP_FindFirst(const char *path_abs, FTPDIRSTATESTRUCT* state, ftp_en
 		return true;
 	}
 
-	sprintf(buf, "CWD %s%s", env->share, path_abs);
+	if(snprintf(buf, sizeof(buf), "CWD %s%s", env->share, path_abs) >= (int)sizeof(buf)) return false;
 
 	t1=ticks_to_millisecs(gettime());
 
@@ -1719,7 +1721,7 @@ static bool FTP_ReadFile(void* buf, off_t len, off_t offset, FTPFILESTRUCT* file
 
 read_retry:
 
-	sprintf(buf2, "RETR %s%s", env->share, file->filename);
+	if(snprintf(buf2, sizeof(buf2), "RETR %s%s", env->share, file->filename) >= (int)sizeof(buf2)) return false;
 
 	if( (res = ftp_execute_open(env, buf2, "I", offset, &data_sock)) < 0)
 	{
@@ -1754,7 +1756,7 @@ static bool FTP_WriteFile(void* buf, off_t len, off_t offset, FTPFILESTRUCT* fil
 
 read_retry:
 
-	sprintf(buf2, "STOR %s%s", env->share, file->filename);
+	if(snprintf(buf2, sizeof(buf2), "STOR %s%s", env->share, file->filename) >= (int)sizeof(buf2)) return false;
 
 	if( (res = ftp_execute_open(env, buf2, "I", offset, &data_sock)) < 0)
 	{
@@ -1780,7 +1782,7 @@ static bool FTP_MkDir(const char * name, ftp_env * env)
 	char buf2[FTP_MAXPATH + 6];
 	int res;
 
-	sprintf(buf2, "MKD %s%s", env->share, name);
+	if(snprintf(buf2, sizeof(buf2), "MKD %s%s", env->share, name) >= (int)sizeof(buf2)) return false;
 
 	if((res = ftp_execute(env, buf2, 257, 0)) < 0)
 	{
@@ -1796,7 +1798,7 @@ static bool FTP_DeleteFile(const char * name, ftp_env * env)
 	char buf2[FTP_MAXPATH + 6];
 	int res;
 
-	sprintf(buf2, "DELE %s%s", env->share, name);
+	if(snprintf(buf2, sizeof(buf2), "DELE %s%s", env->share, name) >= (int)sizeof(buf2)) return false;
 
 	if((res = ftp_execute(env, buf2, 250, 0)) < 0)
 	{
@@ -1828,7 +1830,7 @@ static bool FTP_DeleteDir(const char * name, ftp_env * env)
         return false;
 	}
 
-	sprintf(buf2, "RMD %s", relativename+1);
+	if(snprintf(buf2, sizeof(buf2), "RMD %s", relativename+1) >= (int)sizeof(buf2)) return false;
 
 	if((res = ftp_execute(env, buf2, 250, 0)) < 0)
 	{
@@ -1846,7 +1848,7 @@ static bool FTP_Rename(const char * oldpath_absolute, const char * path_absolute
 	char buf2[FTP_MAXPATH + 6];
 	int res;
 
-    sprintf(buf2, "RNFR %s%s", env->share, oldpath_absolute);
+    if(snprintf(buf2, sizeof(buf2), "RNFR %s%s", env->share, oldpath_absolute) >= (int)sizeof(buf2)) return false;
 
 	if((res = ftp_execute(env, buf2, 350, 0)) < 0)
     {
@@ -1854,7 +1856,7 @@ static bool FTP_Rename(const char * oldpath_absolute, const char * path_absolute
         return false;
     }
 
-	sprintf(buf2, "RNTO %s%s", env->share, path_absolute);
+	if(snprintf(buf2, sizeof(buf2), "RNTO %s%s", env->share, path_absolute) >= (int)sizeof(buf2)) return false;
 
 	if((res = ftp_execute(env, buf2, 250, 0)) < 0)
 	{
