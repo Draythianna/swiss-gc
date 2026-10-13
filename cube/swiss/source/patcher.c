@@ -132,6 +132,7 @@ void *installPatch2(const void *patch, u32 patchSize) {
 			top_addr -= 8;
 		top_addr -= patchSize;
 		top_addr &= patch ? ~3 : ~31;
+		if (top_addr < LO_RESERVE) return NULL;	// don't descend into VAR_AREA/low memory
 		addr = (void *)top_addr;
 	}
 	patchLocation = Calc_Address(NULL, PATCH_OTHER, (u32)addr);
@@ -1795,7 +1796,7 @@ int Patch_Hypervisor(u32 *data, u32 length, int dataType)
 		{ 54, 6, 9, 0, 3, 27, NULL, 0, "__VMBASEISIExceptionHandler" };
 	_SDA2_BASE_ = _SDA_BASE_ = 0;
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if ((data[i + 0] & 0xFFFF0000) == 0x3C400000 &&
 			(data[i + 1] & 0xFFFF0000) == 0x60420000 &&
 			(data[i + 2] & 0xFFFF0000) == 0x3DA00000 &&
@@ -1806,7 +1807,7 @@ int Patch_Hypervisor(u32 *data, u32 length, int dataType)
 		}
 	}
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if ((data[i - 1] != 0x4E800020 &&
 			(data[i - 1] != 0x00000000 || data[i - 2] != 0x4E800020) &&
 			(data[i - 1] != 0x00000000 || data[i - 2] != 0x00000000 || data[i - 3] != 0x4E800020) &&
@@ -8411,7 +8412,7 @@ void Patch_Video(u32 *data, u32 length, int dataType)
 			break;
 	}
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if ((data[i + 0] & 0xFFFF0000) == 0x3C400000 &&
 			(data[i + 1] & 0xFFFF0000) == 0x60420000 &&
 			(data[i + 2] & 0xFFFF0000) == 0x3DA00000 &&
@@ -8422,7 +8423,7 @@ void Patch_Video(u32 *data, u32 length, int dataType)
 		}
 	}
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if ((data[i + 0] != 0x7C0802A6 && (data[i + 0] & 0xFFFF0000) != 0x94210000) ||
 			(data[i - 1] != 0x4E800020 &&
 			(data[i - 1] != 0x00000000 || data[i - 2] != 0x4E800020) &&
@@ -11240,7 +11241,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 		{ 41, 18, 11, 0, 1, 0, NULL, 0, "GXSetProjection" }
 	};
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if (data[i] != 0xED241828)
 			continue;
 		if (find_pattern(data, dataType, i, length, &MTXFrustumSig)) {
@@ -11256,7 +11257,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 			}
 		}
 	}
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if (data[i + 2] != 0xED441828)
 			continue;
 		if (find_pattern(data, dataType, i, length, &MTXLightFrustumSig)) {
@@ -11272,7 +11273,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 			}
 		}
 	}
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if (data[i] != 0x7C0802A6)
 			continue;
 		if (find_pattern(data, dataType, i, length, &MTXPerspectiveSig)) {
@@ -11288,7 +11289,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 			}
 		}
 	}
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if (data[i] != 0x7C0802A6)
 			continue;
 		if (find_pattern(data, dataType, i, length, &MTXLightPerspectiveSig)) {
@@ -11305,7 +11306,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 		}
 	}
 	if (swissSettings.forceWidescreen == 2) {
-		for (i = 0; i < length / sizeof(u32); i++) {
+		for (i = 4; i + 32 < length / sizeof(u32); i++) {
 			if (data[i] != 0xED041828)
 				continue;
 			if (find_pattern(data, dataType, i, length, &MTXOrthoSig)) {
@@ -11322,7 +11323,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 				}
 			}
 		}
-		for (i = 0; i < length / sizeof(u32); i++) {
+		for (i = 4; i + 32 < length / sizeof(u32); i++) {
 			if ((data[i + 1] & 0xFC00FFFF) != 0x38000156)
 				continue;
 			
@@ -11347,7 +11348,7 @@ void Patch_Widescreen(u32 *data, u32 length, int dataType)
 		}
 	}
 	if (!MTXFrustumSig.offsetFoundAt && !MTXPerspectiveSig.offsetFoundAt) {
-		for (i = 0; i < length / sizeof(u32); i++) {
+		for (i = 4; i + 32 < length / sizeof(u32); i++) {
 			if (data[i + 1] != 0x2C040001)
 				continue;
 			
@@ -11381,7 +11382,7 @@ int Patch_TexFilt(u32 *data, u32 length, int dataType)
 		{  89, 30, 11, 0, 11,  6, NULL, 0, "GXInitTexObjLOD" }
 	};
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if (data[i + 2] != 0xFC030040 && data[i + 4] != 0xFC030000)
 			continue;
 		
@@ -11452,7 +11453,7 @@ int Patch_FontEncode(u32 *data, u32 length)
 	int i;
 	int patched = 0;
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if (!memcmp(data + i, _fontencoded, sizeof(_fontencoded))) {
 			data[i + 4] = 0x38600000 | (swissSettings.fontEncode & 0xFFFF);
 			data[i + 6] = 0x38600000 | (swissSettings.fontEncode & 0xFFFF);
@@ -13521,7 +13522,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 			print_debug("Patched:[%s]\n", fileName);
 			patched++;
 		}
-	} else if (!strncmp(gameID, "GCCE01", 6) || !strncmp(gameID, "GCCP01", 6)) {
+	} else if ((!strncmp(gameID, "GCCE01", 6) || !strncmp(gameID, "GCCP01", 6)) && length >= 0x1390) {
 		if (!strcasecmp(fileName, "ffcc_cli.bin")) {
 			*(u16 *)(data + 0x2504) = __builtin_bswap16(0x8004);
 			*(u16 *)(data + 0x2506) = __builtin_bswap16(0x20FF);
@@ -13539,7 +13540,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 			print_debug("Patched:[%s]\n", fileName);
 			patched++;
 		}
-	} else if (!strncmp(gameID, "GCCJGC", 6)) {
+	} else if (!strncmp(gameID, "GCCJGC", 6) && length >= 0x1390) {
 		if (!strcasecmp(fileName, "ffcc_cli.bin")) {
 			*(u16 *)(data + 0x132C) = __builtin_bswap16(0x8004);
 			*(u16 *)(data + 0x132E) = __builtin_bswap16(0x20FF);
@@ -13557,7 +13558,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 			print_debug("Patched:[%s]\n", fileName);
 			patched++;
 		}
-	} else if (!strncmp(gameID, "GHAE08", 6)) {
+	} else if (!strncmp(gameID, "GHAE08", 6) && length >= 0x200000) {
 		if (!strcasecmp(fileName, "claire.rel")) {
 			*(u32 *)(data + 0x190294) = 0x60000000;
 			
@@ -13575,7 +13576,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 			print_debug("Patched:[%s]\n", fileName);
 			patched++;
 		}
-	} else if (!strncmp(gameID, "GHAJ08", 6)) {
+	} else if (!strncmp(gameID, "GHAJ08", 6) && length >= 0x200000) {
 		if (!strcasecmp(fileName, "claire.rel")) {
 			*(u32 *)(data + 0x1903FC) = 0x60000000;
 			
@@ -13593,7 +13594,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 			print_debug("Patched:[%s]\n", fileName);
 			patched++;
 		}
-	} else if (!strncmp(gameID, "GHAP08", 6)) {
+	} else if (!strncmp(gameID, "GHAP08", 6) && length >= 0x200000) {
 		if (!strcasecmp(fileName, "claire.rel")) {
 			*(u32 *)(data + 0x190710) = 0x60000000;
 			
@@ -13682,7 +13683,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 			print_debug("Patched:[%s]\n", fileName);
 			patched++;
 		}
-	} else if (!strncmp(gameID, "GLEP08", 6)) {
+	} else if (!strncmp(gameID, "GLEP08", 6) && length >= 0x200000) {
 		if (!strcasecmp(fileName, "eng.rel")) {
 			*(u32 *)(data + 0x14C354) = 0x60000000;
 			
@@ -13743,7 +13744,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXD64", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FC8;
 			
@@ -13765,7 +13766,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXE64", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FE4;
 			
@@ -13781,7 +13782,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXF64", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FC8;
 			
@@ -13803,7 +13804,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXI64", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FC8;
 			
@@ -13825,7 +13826,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXJ13", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FC0;
 			
@@ -13847,7 +13848,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXP64", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FDC;
 			
@@ -13865,7 +13866,7 @@ int Patch_GameSpecificFile(void *data, u32 length, const char *gameID, const cha
 	} else if (!strncmp(gameID, "GSXS64", 6)) {
 		if (!strcmp(fileName, "bi2.bin")) {
 			u32 args = *(u32 *)(data + 0x8);
-			if (args) memset(data + args, 0, length - args);
+			if (args && args < length) memset(data + args, 0, length - args);
 			
 			*(u32 *)(data + 0x8) = 0x1FC8;
 			
@@ -15867,7 +15868,7 @@ int Patch_Miscellaneous(u32 *data, u32 length, int dataType)
 	};
 	_SDA2_BASE_ = _SDA_BASE_ = 0;
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if ((data[i + 0] & 0xFFFF0000) == 0x3C400000 &&
 			(data[i + 1] & 0xFFFF0000) == 0x60420000 &&
 			(data[i + 2] & 0xFFFF0000) == 0x3DA00000 &&
@@ -15878,7 +15879,7 @@ int Patch_Miscellaneous(u32 *data, u32 length, int dataType)
 		}
 	}
 	
-	for (i = 0; i < length / sizeof(u32); i++) {
+	for (i = 4; i + 32 < length / sizeof(u32); i++) {
 		if ((data[i + 0] != 0x7C0802A6 && (data[i + 0] & 0xFFFF0000) != 0x94210000) ||
 			(data[i - 1] != 0x4E800020 &&
 			(data[i - 1] != 0x00000000 || data[i - 2] != 0x4E800020) &&
@@ -17760,6 +17761,8 @@ void *Calc_ProperAddress(void *data, int dataType, u32 offsetFoundAt) {
 			return NULL;
 
 		Elf32_Ehdr *ehdr = (Elf32_Ehdr *) data;
+		if (ehdr->e_phnum == 0 || ehdr->e_phnum > 64 || ehdr->e_phoff < sizeof(Elf32_Ehdr) || ehdr->e_phoff > 0x100000)
+			return NULL;
 		Elf32_Phdr *phdr = (Elf32_Phdr *)(data + ehdr->e_phoff);
 		int i;
 
@@ -17850,6 +17853,8 @@ void *Calc_Address(void *data, int dataType, u32 properAddress) {
 			return NULL;
 
 		Elf32_Ehdr *ehdr = (Elf32_Ehdr *) data;
+		if (ehdr->e_phnum == 0 || ehdr->e_phnum > 64 || ehdr->e_phoff < sizeof(Elf32_Ehdr) || ehdr->e_phoff > 0x100000)
+			return NULL;
 		Elf32_Phdr *phdr = (Elf32_Phdr *)(data + ehdr->e_phoff);
 		int i;
 
@@ -17913,7 +17918,7 @@ int Patch_CheatsHook(u8 *data, u32 length, u32 type) {
 		return 0;
 
 	int i;
-	for( i=0; i < length; i+=4 )
+	for( i=0; i + 48 <= length; i+=4 )
 	{
 		// Find OSSleepThread
 		if(*(vu32*)(data+i+0) == 0x3C808000 &&
@@ -17923,8 +17928,9 @@ int Patch_CheatsHook(u8 *data, u32 length, u32 type) {
 			
 			// Find the end of the function and replace the blr with a relative branch to CHEATS_ENGINE_START
 			int j = 12;
-			while( *(vu32*)(data+i+j) != 0x4E800020 )
+			while( i + j + 4 <= length && *(vu32*)(data+i+j) != 0x4E800020 )
 				j+=4;
+			if( i + j + 4 > length ) break;
 			// As the data we're looking at will not be in this exact memory location until it's placed there by our ARAM relocation stub,
 			// we'll need to work out where it will end up when it does get placed in memory to write the relative branch.
 			void *properAddress = Calc_ProperAddress(data, type, i+j);
@@ -17936,7 +17942,7 @@ int Patch_CheatsHook(u8 *data, u32 length, u32 type) {
 		}
 	}
 	// try GX DrawDone and its variants
-	for( i=0; i < length; i+=4 )
+	for( i=0; i + 44 <= length; i+=4 )
 	{
 		if(( *(vu32*)(data+i+0) == 0x3CC0CC01 &&
 			*(vu32*)(data+i+4) == 0x3CA04500 &&
@@ -17958,8 +17964,9 @@ int Patch_CheatsHook(u8 *data, u32 length, u32 type) {
 			
 			// Find the end of the function and replace the blr with a relative branch to CHEATS_ENGINE_START
 			int j = 16;
-			while( *(vu32*)(data+i+j) != 0x4E800020 )
+			while( i + j + 4 <= length && *(vu32*)(data+i+j) != 0x4E800020 )
 				j+=4;
+			if( i + j + 4 > length ) break;
 			// As the data we're looking at will not be in this exact memory location until it's placed there by our ARAM relocation stub,
 			// we'll need to work out where it will end up when it does get placed in memory to write the relative branch.
 			void *properAddress = Calc_ProperAddress(data, type, i+j);
@@ -18027,10 +18034,12 @@ int Patch_ExecutableFile(void **buffer, u32 *sizeToRead, const char *gameID, int
 			Bytef data[];
 		} *zlib = Calc_Address(data, type, 0x80200000);
 		
-		if (zlib == NULL || __builtin_add_overflow_p(length, zlib->inflateLength, (size_t)0))
+		// Validate the embedded second stage before growing the image for it.
+		if (zlib == NULL || zlib->deflateLength > length || zlib->inflateLength > 16*1024*1024 || __builtin_add_overflow_p(length, zlib->inflateLength, (size_t)0))
 			return patch(data, length, gameID, type);
-		
-		DOLHEADER *dol = realloc(data, length + zlib->inflateLength);
+
+		const u32 allocLen = length + zlib->inflateLength;
+		DOLHEADER *dol = realloc(data, allocLen);
 		
 		if (dol == NULL)
 			return patch(data, length, gameID, type);
@@ -18046,7 +18055,7 @@ int Patch_ExecutableFile(void **buffer, u32 *sizeToRead, const char *gameID, int
 			memcpy(&dolhdr, dol, DOLHDRLENGTH);
 			
 			for (j = 0; j < MAXTEXTSECTION; j++) {
-				if (dol2->textOffset[j]) {
+				if (dol2->textOffset[j] && dol2->textOffset[j] + dol2->textLength[j] <= zlib->inflateLength) {
 					for (i = 0; i < MAXTEXTSECTION; i++) {
 						if (!dol->textOffset[i]) {
 							dol->textOffset[i] = dol2->textOffset[j] + length;
@@ -18059,7 +18068,7 @@ int Patch_ExecutableFile(void **buffer, u32 *sizeToRead, const char *gameID, int
 			}
 			
 			for (j = 0; j < MAXDATASECTION; j++) {
-				if (dol2->dataOffset[j]) {
+				if (dol2->dataOffset[j] && dol2->dataOffset[j] + dol2->dataLength[j] <= zlib->inflateLength) {
 					for (i = 0; i < MAXDATASECTION; i++) {
 						if (!dol->dataOffset[i]) {
 							dol->dataOffset[i] = dol2->dataOffset[j] + length;
@@ -18072,8 +18081,9 @@ int Patch_ExecutableFile(void **buffer, u32 *sizeToRead, const char *gameID, int
 			}
 			
 			length = DOLSize(data);
+			if (length > allocLen) length = allocLen;
 			patched = patch(data, length, gameID, type);
-			
+
 			memcpy(dol, &dolhdr, DOLHDRLENGTH);
 			
 			struct libdeflate_compressor *compressor = libdeflate_alloc_compressor(7);
@@ -18101,11 +18111,12 @@ int Patch_ExecutableFile(void **buffer, u32 *sizeToRead, const char *gameID, int
 		case PATCH_ELF:
 			if (valid_elf_image(data)) {
 				Elf32_Ehdr *ehdr = data;
-				Elf32_Phdr *phdr = data + ehdr->e_phoff;
-				
-				for (i = 0; i < ehdr->e_phnum; i++)
-					if (phdr[i].p_type == PT_LOAD)
-						phdr[i].p_paddr = phdr[i].p_vaddr;
+				if ((u64)ehdr->e_phoff + (u64)ehdr->e_phnum * sizeof(Elf32_Phdr) <= length) {
+					Elf32_Phdr *phdr = data + ehdr->e_phoff;
+					for (i = 0; i < ehdr->e_phnum; i++)
+						if (phdr[i].p_type == PT_LOAD)
+							phdr[i].p_paddr = phdr[i].p_vaddr;
+				}
 			}
 			break;
 	}
