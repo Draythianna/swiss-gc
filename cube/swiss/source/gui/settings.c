@@ -305,23 +305,31 @@ uiDrawObj_t* settings_draw_page(int page_num, int option, ConfigEntry *gameConfi
 		}
 	}
 	else if(page_num == PAGE_INTERFACE) {
+		int settings_per_page = 10;
+		int scrollBarHeight = 90+(settings_per_page*20);
+		int scrollBarTabHeight = (int)((float)scrollBarHeight/(float)SET_PAGE_2_BACK);
+		DrawAddChild(page, DrawVertScrollBar(getVideoMode()->fbWidth-45, 110, 25, scrollBarHeight, (float)((float)option/(float)(SET_PAGE_2_BACK-1)),scrollBarTabHeight));
 		DrawAddChild(page, DrawPageHeader(page_x_ofs_key, 77, "Interface Settings", 1, 6));
-		drawSettingEntryString(page, &page_y_ofs, "File Browser Type:", fileBrowserTypeStr[swissSettings.fileBrowserType], option == SET_FILEBROWSER_TYPE, true);
-		drawSettingEntryString(page, &page_y_ofs, "File Browser Type for apps:", fileBrowserTypeStr[swissSettings.appsBrowserType], option == SET_APPSBROWSER_TYPE, true);
-		drawSettingEntryString(page, &page_y_ofs, "File Browser Type for games:", fileBrowserTypeStr[swissSettings.gameBrowserType], option == SET_GAMEBROWSER_TYPE, true);
-		drawSettingEntryBoolean(page, &page_y_ofs, "File Management:", swissSettings.enableFileManagement, option == SET_FILE_MGMT, true);
-		drawSettingEntryString(page, &page_y_ofs, "Recent List:", recentListLevelStr[swissSettings.recentListLevel], option == SET_RECENT_LIST, true);
-		drawSettingEntryBoolean(page, &page_y_ofs, "Show hidden files:", swissSettings.showHiddenFiles, option == SET_SHOW_HIDDEN, true);
-		drawSettingEntryBoolean(page, &page_y_ofs, "Hide unknown file types:", swissSettings.hideUnknownFileTypes, option == SET_HIDE_UNK, true);
-		drawSettingEntryBoolean(page, &page_y_ofs, "Boot without prompts:", swissSettings.autoBoot, option == SET_AUTOBOOT, true);
-		drawSettingEntryString(page, &page_y_ofs, "Load at startup:", getAutoLoadDeviceName(&swissSettings), option == SET_AUTOLOAD, true);
-		drawSettingEntryString(page, &page_y_ofs, "Flatten directory:", swissSettings.flattenDir, option == SET_FLATTEN_DIR, true);
-		drawSettingEntryBoolean(page, &page_y_ofs, "Menu Sounds:", swissSettings.uiSounds, option == SET_UI_SOUNDS, true);
-		sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscanX);
-		drawSettingEntryString(page, &page_y_ofs, "Menu Overscan X:", uiOverscanStr, option == SET_UI_OVERSCAN, true);
-		sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscanY);
-		drawSettingEntryString(page, &page_y_ofs, "Menu Overscan Y:", uiOverscanStr, option == SET_UI_OVERSCAN_Y, true);
-		drawSettingEntryString(page, &page_y_ofs, "Games View:", gamesViewStr[swissSettings.gamesView], option == SET_GAMES_VIEW, true);
+		// 14 rows don't fit above the Back/Next buttons: show them ten at a time, as the other pages do
+		if(option < SET_UI_SOUNDS) {
+			drawSettingEntryString(page, &page_y_ofs, "File Browser Type:", fileBrowserTypeStr[swissSettings.fileBrowserType], option == SET_FILEBROWSER_TYPE, true);
+			drawSettingEntryString(page, &page_y_ofs, "File Browser Type for apps:", fileBrowserTypeStr[swissSettings.appsBrowserType], option == SET_APPSBROWSER_TYPE, true);
+			drawSettingEntryString(page, &page_y_ofs, "File Browser Type for games:", fileBrowserTypeStr[swissSettings.gameBrowserType], option == SET_GAMEBROWSER_TYPE, true);
+			drawSettingEntryBoolean(page, &page_y_ofs, "File Management:", swissSettings.enableFileManagement, option == SET_FILE_MGMT, true);
+			drawSettingEntryString(page, &page_y_ofs, "Recent List:", recentListLevelStr[swissSettings.recentListLevel], option == SET_RECENT_LIST, true);
+			drawSettingEntryBoolean(page, &page_y_ofs, "Show hidden files:", swissSettings.showHiddenFiles, option == SET_SHOW_HIDDEN, true);
+			drawSettingEntryBoolean(page, &page_y_ofs, "Hide unknown file types:", swissSettings.hideUnknownFileTypes, option == SET_HIDE_UNK, true);
+			drawSettingEntryBoolean(page, &page_y_ofs, "Boot without prompts:", swissSettings.autoBoot, option == SET_AUTOBOOT, true);
+			drawSettingEntryString(page, &page_y_ofs, "Load at startup:", getAutoLoadDeviceName(&swissSettings), option == SET_AUTOLOAD, true);
+			drawSettingEntryString(page, &page_y_ofs, "Flatten directory:", swissSettings.flattenDir, option == SET_FLATTEN_DIR, true);
+		} else {
+			drawSettingEntryBoolean(page, &page_y_ofs, "Menu Sounds:", swissSettings.uiSounds, option == SET_UI_SOUNDS, true);
+			sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscanX);
+			drawSettingEntryString(page, &page_y_ofs, "Menu Overscan X:", uiOverscanStr, option == SET_UI_OVERSCAN, true);
+			sprintf(uiOverscanStr, "%i%%", swissSettings.uiOverscanY);
+			drawSettingEntryString(page, &page_y_ofs, "Menu Overscan Y:", uiOverscanStr, option == SET_UI_OVERSCAN_Y, true);
+			drawSettingEntryString(page, &page_y_ofs, "Games View:", gamesViewStr[swissSettings.gamesView], option == SET_GAMES_VIEW, true);
+		}
 	}
 	else if(page_num == PAGE_NETWORK) {
 		int settings_per_page = 10;
